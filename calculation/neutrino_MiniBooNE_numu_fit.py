@@ -11,9 +11,6 @@ import io
 # 强制标准输出使用 utf-8 编码
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
-print("现在中文应该正常显示了")
-
-
 
 mpl.rcParams.update({
     'font.family': 'sans-serif',
