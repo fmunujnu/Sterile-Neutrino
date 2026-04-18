@@ -1,0 +1,280 @@
+import numpy as np
+from numpy.linalg import inv
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+import read_data as rd
+
+mpl.rcParams.update({
+    'font.family': 'sans-serif',
+    'font.sans-serif': ['DejaVu Sans', 'Arial Unicode MS', 'Liberation Sans'],
+    'mathtext.fontset': 'dejavusans',
+    'axes.unicode_minus': False,
+    'font.size': 13, 'axes.labelsize': 14, 'axes.titlesize': 13,
+    'xtick.labelsize': 12, 'ytick.labelsize': 12,
+    'legend.fontsize': 11, 'figure.dpi': 100,
+})
+
+
+# ============================================================
+# 实验数据
+# ============================================================
+class MicroBooNE:
+    def __init__(self):
+        self.Elo = np.arange(0.00, 10.00, 0.05)
+        self.Ehi = self.Elo + 0.05
+
+        self.numu_flux = np.array([
+            2.272e-12, 8.566e-12, 1.112e-11, 1.335e-11, 1.658e-11, 1.820e-11, 1.946e-11, 2.045e-11, 2.161e-11, 2.241e-11,
+            2.279e-11, 2.292e-11, 2.275e-11, 2.253e-11, 2.214e-11, 2.156e-11, 2.078e-11, 1.992e-11, 1.894e-11, 1.789e-11,
+            1.677e-11, 1.558e-11, 1.439e-11, 1.318e-11, 1.193e-11, 1.069e-11, 9.503e-12, 8.356e-12, 7.278e-12, 6.292e-12,
+            5.396e-12, 4.601e-12, 3.902e-12, 3.285e-12, 2.760e-12, 2.312e-12, 1.932e-12, 1.616e-12, 1.355e-12, 1.138e-12,
+            9.589e-13, 8.150e-13, 6.928e-13, 5.937e-13, 5.147e-13, 4.478e-13, 3.935e-13, 3.500e-13, 3.150e-13, 2.867e-13,
+            2.615e-13, 2.409e-13, 2.273e-13, 2.110e-13, 1.995e-13, 1.920e-13, 1.815e-13, 1.726e-13, 1.665e-13, 1.601e-13,
+            1.554e-13, 1.493e-13, 1.442e-13, 1.412e-13, 1.363e-13, 1.323e-13, 1.265e-13, 1.217e-13, 1.183e-13, 1.140e-13,
+            1.102e-13, 1.060e-13, 1.014e-13, 9.700e-14, 9.340e-14, 9.001e-14, 8.641e-14, 8.190e-14, 7.867e-14, 7.464e-14,
+            7.146e-14, 6.812e-14, 6.499e-14, 6.185e-14, 5.858e-14, 5.614e-14, 5.320e-14, 5.016e-14, 4.765e-14, 4.561e-14,
+            4.281e-14, 4.087e-14, 3.841e-14, 3.632e-14, 3.432e-14, 3.263e-14, 3.016e-14, 2.857e-14, 2.689e-14, 2.529e-14,
+            2.372e-14, 2.227e-14, 2.103e-14, 1.957e-14, 1.834e-14, 1.730e-14, 1.615e-14, 1.513e-14, 1.406e-14, 1.303e-14,
+            1.214e-14, 1.129e-14, 1.047e-14, 9.569e-15, 8.870e-15, 8.148e-15, 7.429e-15, 6.765e-15, 6.097e-15, 5.492e-15,
+            4.977e-15, 4.445e-15, 3.967e-15, 3.492e-15, 3.037e-15, 2.595e-15, 2.225e-15, 1.854e-15, 1.537e-15, 1.220e-15,
+            9.780e-16, 7.842e-16, 6.198e-16, 4.786e-16, 3.334e-16, 1.971e-16, 9.391e-17, 2.738e-17, 6.065e-18, 4.135e-18,
+            1.933e-18, 9.888e-19, 4.494e-20, *([0.0]*57)])
+
+        self.numub_flux = np.array([
+            2.560e-12, 5.671e-12, 3.300e-12, 2.028e-12, 1.623e-12, 1.395e-12, 1.301e-12, 1.249e-12, 1.171e-12, 1.054e-12,
+            9.580e-13, 8.695e-13, 8.098e-13, 7.434e-13, 6.910e-13, 6.314e-13, 5.905e-13, 5.504e-13, 5.079e-13, 4.708e-13,
+            4.347e-13, 4.021e-13, 3.703e-13, 3.443e-13, 3.173e-13, 2.872e-13, 2.597e-13, 2.337e-13, 2.101e-13, 1.903e-13,
+            1.718e-13, 1.507e-13, 1.341e-13, 1.173e-13, 1.053e-13, 9.241e-14, 8.188e-14, 7.115e-14, 6.349e-14, 5.547e-14,
+            4.799e-14, 4.071e-14, 3.592e-14, 3.082e-14, 2.638e-14, 2.248e-14, 1.878e-14, 1.623e-14, 1.391e-14, 1.162e-14,
+            1.010e-14, 8.691e-15, 7.382e-15, 5.999e-15, 5.004e-15, 4.204e-15, 3.571e-15, 3.047e-15, 2.597e-15, 2.138e-15,
+            1.956e-15, 1.584e-15, 1.227e-15, 1.021e-15, 8.356e-16, 7.777e-16, 6.812e-16, 7.386e-16, 6.128e-16, 6.251e-16,
+            5.519e-16, 3.936e-16, 4.141e-16, 3.395e-16, 3.002e-16, 2.502e-16, 2.273e-16, 2.299e-16, 1.429e-16, 1.574e-16,
+            1.218e-16, 1.280e-16, 1.612e-16, 8.604e-17, 9.270e-17, 5.371e-17, 5.495e-17, 4.276e-17, 3.693e-17, 6.592e-17,
+            6.261e-17, 2.266e-17, 3.924e-17, 5.036e-17, 3.051e-17, 7.985e-17, 1.630e-16, 1.787e-16, 5.729e-17, 6.383e-18,
+            5.257e-18, 5.222e-18, 4.369e-18, 3.186e-18, 3.915e-18, 2.197e-18, 1.690e-18, 1.177e-18, 9.963e-19, 9.197e-19,
+            6.790e-19, 5.695e-19, 5.234e-19, 3.209e-19, 2.809e-19, 2.700e-19, 1.624e-19, 1.383e-19, 1.192e-19, 9.024e-20,
+            9.442e-20, 5.076e-20, 6.390e-20, 4.695e-20, 2.734e-20, 3.940e-20, 2.067e-20, 2.327e-20, 2.294e-20, 1.385e-20,
+            1.932e-21, 8.299e-21, 5.854e-21, 1.843e-21, 0., 1.783e-21, 4.490e-21, 4.205e-21, *([0.0]*62)])
+
+        self.nue_flux = np.array([
+            1.530e-14, 5.722e-14, 1.273e-13, 1.231e-13, 1.042e-13, 1.078e-13, 1.093e-13, 1.086e-13, 1.061e-13, 1.034e-13,
+            1.001e-13, 9.654e-14, 9.198e-14, 8.800e-14, 8.467e-14, 8.008e-14, 7.740e-14, 7.390e-14, 6.924e-14, 6.618e-14,
+            6.239e-14, 6.037e-14, 5.633e-14, 5.446e-14, 5.014e-14, 4.838e-14, 4.520e-14, 4.350e-14, 4.028e-14, 3.933e-14,
+            3.696e-14, 3.455e-14, 3.285e-14, 3.059e-14, 2.885e-14, 2.803e-14, 2.574e-14, 2.431e-14, 2.298e-14, 2.165e-14,
+            2.042e-14, 1.867e-14, 1.763e-14, 1.656e-14, 1.545e-14, 1.485e-14, 1.361e-14, 1.281e-14, 1.190e-14, 1.130e-14,
+            1.043e-14, 9.800e-15, 8.832e-15, 8.607e-15, 7.727e-15, 7.285e-15, 6.793e-15, 6.371e-15, 5.772e-15, 5.490e-15,
+            4.989e-15, 4.656e-15, 4.211e-15, 4.071e-15, 3.819e-15, 3.496e-15, 3.165e-15, 2.922e-15, 2.624e-15, 2.489e-15,
+            2.276e-15, 2.078e-15, 1.887e-15, 1.716e-15, 1.603e-15, 1.448e-15, 1.338e-15, 1.215e-15, 1.171e-15, 9.923e-16,
+            9.308e-16, 8.357e-16, 7.638e-16, 6.755e-16, 6.545e-16, 5.973e-16, 5.257e-16, 4.645e-16, 4.304e-16, 3.828e-16,
+            3.410e-16, 3.141e-16, 2.881e-16, 2.498e-16, 2.223e-16, 2.055e-16, 1.819e-16, 1.592e-16, 1.407e-16, 1.242e-16,
+            1.142e-16, 1.028e-16, 8.425e-17, 7.409e-17, 6.574e-17, 5.592e-17, 4.790e-17, 4.200e-17, 3.153e-17, 2.980e-17,
+            2.362e-17, 2.218e-17, 1.834e-17, 1.757e-17, 1.367e-17, 1.136e-17, 9.188e-18, 7.469e-18, 6.502e-18, 5.513e-18,
+            4.571e-18, 4.365e-18, 2.147e-18, 2.322e-18, 1.548e-18, 1.282e-18, 1.049e-18, 8.226e-19, 8.297e-19, 6.143e-19,
+            8.553e-19, 4.705e-19, 4.387e-19, 5.170e-19, 3.049e-19, 1.612e-19, 1.606e-19, 1.181e-19, 1.960e-19, 7.793e-20,
+            1.571e-19, 1.169e-19, *([0.0]*58)])
+
+        self.nueb_flux = np.array([
+            5.047e-15, 1.156e-14, 1.705e-14, 1.529e-14, 1.002e-14, 1.039e-14, 9.661e-15, 9.990e-15, 9.711e-15, 9.380e-15,
+            9.049e-15, 9.298e-15, 8.340e-15, 8.007e-15, 7.769e-15, 7.364e-15, 6.980e-15, 6.944e-15, 6.564e-15, 5.783e-15,
+            6.041e-15, 5.471e-15, 5.113e-15, 5.054e-15, 4.918e-15, 4.902e-15, 4.552e-15, 4.400e-15, 4.388e-15, 3.939e-15,
+            3.598e-15, 3.530e-15, 3.588e-15, 3.289e-15, 3.112e-15, 2.919e-15, 2.733e-15, 2.850e-15, 2.564e-15, 2.514e-15,
+            2.387e-15, 2.242e-15, 2.093e-15, 2.027e-15, 1.812e-15, 1.724e-15, 1.665e-15, 1.532e-15, 1.470e-15, 1.394e-15,
+            1.305e-15, 1.279e-15, 1.140e-15, 1.042e-15, 9.795e-16, 9.706e-16, 8.481e-16, 8.082e-16, 7.190e-16, 6.964e-16,
+            6.877e-16, 6.044e-16, 5.312e-16, 5.064e-16, 4.558e-16, 4.458e-16, 3.910e-16, 3.674e-16, 3.457e-16, 3.385e-16,
+            2.937e-16, 2.900e-16, 2.523e-16, 2.363e-16, 2.107e-16, 1.936e-16, 1.801e-16, 1.561e-16, 1.465e-16, 1.371e-16,
+            1.249e-16, 1.148e-16, 1.079e-16, 9.442e-17, 8.323e-17, 7.855e-17, 6.963e-17, 6.551e-17, 5.711e-17, 4.896e-17,
+            4.631e-17, 4.348e-17, 3.697e-17, 3.522e-17, 3.216e-17, 2.985e-17, 2.577e-17, 2.299e-17, 2.077e-17, 1.950e-17,
+            1.843e-17, 1.332e-17, 1.044e-17, 9.753e-18, 8.689e-18, 8.865e-18, 7.198e-18, 6.320e-18, 5.182e-18, 3.874e-18,
+            3.370e-18, 3.068e-18, 2.157e-18, 2.255e-18, 1.785e-18, 1.269e-18, 1.316e-18, 8.751e-19, 8.883e-19, 6.479e-19,
+            5.714e-19, 6.861e-19, 4.251e-19, 4.221e-19, 3.999e-19, 3.749e-19, 1.223e-19, 2.968e-19, 7.318e-20, 1.551e-20,
+            3.392e-19, 2.261e-19, 1.258e-19, 9.574e-20, 8.005e-20, 4.006e-20, 1.595e-19, 0., 3.208e-19, 1.196e-19,
+            1.993e-19, 1.595e-19, 3.987e-20, *([0.0]*57)])
+
+        self.E_centers   = (self.Elo + self.Ehi) / 2.0
+        self.n_flux_bins = len(self.E_centers)
+        self.absolute_flux = {
+            'numu': self.numu_flux, 'numub': self.numub_flux,
+            'nue':  self.nue_flux,  'nueb':  self.nueb_flux,
+        }
+
+        obs_Elo = np.linspace(0.0, 2.5, 26)
+        obs_Ehi = np.r_[np.linspace(0.1, 2.5, 25), 10]
+        self.obs_Elo_GeV     = obs_Elo
+        self.obs_Ehi_GeV     = obs_Ehi
+        self.obs_centers_GeV = (obs_Elo + obs_Ehi) / 2.
+        self.n_obs_bins      = len(self.obs_centers_GeV)
+
+        self.n_channels       = 2
+        self.signal_fractions = np.array([0.65, 0.35])
+
+        # ── 读取数据 ──────────────────────────────────────────────
+        file1 = r"E:\sterile neutrino data\HEPData-ins3088922-v1-Unconstrained_14_channels.csv"
+        data, bkg, _ = rd.read_three_spectra(file1)
+        self.observed   = data[:52]
+        self.background = bkg[:52]
+
+        file2 = r"E:\sterile neutrino data\HEPData-ins3088922-v1-14_channel_covariance_matrix.csv"
+        cov = rd.read_covariance_matrix(file2, make_symmetric=False)
+        self.covariance     = np.array(cov[:52, :52], dtype=float)
+        self.inv_covariance = inv(self.covariance)
+
+        # ── 预计算量 ──────────────────────────────────────────────
+        self.N_target      = 1.3e30
+        self.L_km          = 0.470
+        self.pot           = 6.46e20
+        self.sigma_flux    = np.full(self.n_flux_bins, 0.93e-39)
+        self.efficiency_flux = np.full(self.n_flux_bins, 1)
+
+        self.E_true       = self.E_centers
+        self.E_true_edges = np.concatenate([[self.Elo[0]], self.Ehi])
+
+        self.response_matrix = np.zeros((self.n_flux_bins, self.n_obs_bins))
+        for i, E in enumerate(self.E_centers):
+            for j in range(self.n_obs_bins):
+                if self.obs_Elo_GeV[j] <= E < self.obs_Ehi_GeV[j]:
+                    self.response_matrix[i, j] = 1.0
+                    break
+        rs = self.response_matrix.sum(axis=1, keepdims=True)
+        nz = rs[:, 0] > 0
+        self.response_matrix[nz] /= rs[nz]
+
+        scale = self.sigma_flux * self.efficiency_flux * self.pot * self.N_target
+        self.precomp_nu  = self.absolute_flux['numu']  * scale
+        self.precomp_nub = self.absolute_flux['numub'] * scale
+
+
+# ============================================================
+# 振荡模型
+# ============================================================
+def rotation_matrix(N, i, j, theta, delta=0.0):
+    R = np.identity(N, dtype=complex)
+    s, c = np.sin(theta), np.cos(theta)
+    R[i, i] =  c;  R[j, j] =  c
+    R[i, j] =  s * np.exp(-1j * delta)
+    R[j, i] = -s * np.exp( 1j * delta)
+    return R
+
+
+class NeutrinoModels:
+    def __init__(self):
+        self.theta12    = 33  * np.pi / 180
+        self.theta13    = 8.6 * np.pi / 180
+        self.theta23    = 49  * np.pi / 180
+        self.delta13    = 0.0
+        self.m2_3flavor = np.array([0., 7.5e-5, 2.5e-3])
+
+    def _U3(self, N):
+        return (rotation_matrix(N, 1, 2, self.theta23) @
+                rotation_matrix(N, 0, 2, self.theta13, delta=self.delta13) @
+                rotation_matrix(N, 0, 1, self.theta12))
+
+    @staticmethod
+    def _sa(v):
+        return np.arcsin(np.clip(v, 0., 1.))
+
+    def get_mixing_and_masses(self, params):
+        """构建 1+3+1 模型的混合矩阵与质量平方差数组。"""
+        N, sa = 5, self._sa
+        Us1 = (rotation_matrix(N, 2, 3, sa(params.get('theta34', 0.)), delta=params.get('delta34', 0.)) @
+               rotation_matrix(N, 1, 3, sa(params.get('theta24', 0.)), delta=params.get('delta24', 0.)) @
+               rotation_matrix(N, 0, 3, sa(params.get('theta14', 0.)), delta=params.get('delta14', 0.)))
+        Us2 = (rotation_matrix(N, 3, 4, sa(params.get('theta45', 0.)), delta=params.get('delta45', 0.)) @
+               rotation_matrix(N, 2, 4, sa(params.get('theta35', 0.)), delta=params.get('delta35', 0.)) @
+               rotation_matrix(N, 1, 4, sa(params.get('theta25', 0.)), delta=params.get('delta25', 0.)) @
+               rotation_matrix(N, 0, 4, sa(params.get('theta15', 0.)), delta=params.get('delta15', 0.)))
+        U  = Us2 @ Us1 @ self._U3(N)
+        m2 = np.append(self.m2_3flavor, [params.get('dm41', -0.87), params.get('dm51', 0.47)])
+        return U, m2
+
+
+def oscillation_probability(U, m2, alpha, beta, L, E_arr, anti=False):
+    phase  = np.exp(-1j * 1.267 * m2[np.newaxis, :] * L / E_arr[:, np.newaxis])
+    coeffs = np.conj(U[beta, :]) * U[alpha, :] if anti else U[beta, :] * np.conj(U[alpha, :])
+    return np.abs(phase @ coeffs) ** 2
+
+
+# ============================================================
+# 信号谱计算
+# ============================================================
+def compute_signal_spectrum(exp, model, params):
+    U, m2    = model.get_mixing_and_masses(params)
+    P_nu     = oscillation_probability(U, m2, 1, 0, exp.L_km, exp.E_true, anti=False)
+    P_nub    = oscillation_probability(U, m2, 1, 0, exp.L_km, exp.E_true, anti=True)
+    signal26 = exp.response_matrix.T @ (exp.precomp_nu * P_nu + exp.precomp_nub * P_nub)
+    return np.concatenate([signal26 * frac for frac in exp.signal_fractions])
+
+
+# ============================================================
+# 绘图
+# ============================================================
+def plot_spectrum(exp, model, params, param_label=None, savepath=None):
+    n_ch, n_E = exp.n_channels, exp.n_obs_bins
+
+    bkg_mat    = exp.background.reshape(n_ch, n_E)
+    data_mat   = exp.observed.reshape(n_ch, n_E)
+    signal_mat = compute_signal_spectrum(exp, model, params).reshape(n_ch, n_E)
+
+    bkg_sum    = bkg_mat.sum(axis=0)
+    signal_sum = signal_mat.sum(axis=0)
+    data_sum   = data_mat.sum(axis=0)
+    total_pred = bkg_sum + signal_sum
+
+    if param_label is None:
+        parts = [f"{k}={params[k]:.3g}" for k in
+                 ['theta14', 'theta24', 'theta15', 'theta25', 'dm41', 'dm51']
+                 if k in params]
+        param_label = ',  '.join(parts)
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    E_step = np.append(exp.obs_Elo_GeV, exp.obs_Ehi_GeV[-1])
+
+    ax.step(E_step, np.append(bkg_sum,    bkg_sum[-1]),    where='post',
+            color='steelblue', linestyle='--', linewidth=1.6,
+            label='Background (FC + PC)')
+    ax.step(E_step, np.append(total_pred, total_pred[-1]), where='post',
+            color='steelblue', linestyle='-',  linewidth=2.0,
+            label='Bkg + Signal (FC + PC)')
+    ax.step(E_step, np.append(data_sum,   data_sum[-1]),   where='post',
+            color='crimson',   linestyle='-',  linewidth=2.0,
+            label='Observed data (FC + PC)')
+
+    ax.set_xlabel(r'Reconstructed $E_\nu^{\rm QE}\ \rm [GeV]$', fontsize=13)
+    ax.set_ylabel('Event count', fontsize=13)
+    ax.set_title(r'MicroBooNE 1+3+1 — Bkg + Prediction vs Data'
+                 + '\n' + r'$\bf{Params:}$ ' + param_label, fontsize=12)
+    ax.legend(fontsize=11, loc='upper right', framealpha=0.85)
+    ax.tick_params(which='both', direction='in', top=True, right=True, labelsize=11)
+    ax.grid(True, linestyle='--', alpha=0.35)
+    ax.set_xlim(exp.obs_Elo_GeV[0] * 0.98, exp.obs_Ehi_GeV[-1] * 1.02)
+    ax.set_ylim(bottom=0.)
+    fig.tight_layout()
+
+    if savepath:
+        fig.savefig(savepath, dpi=150, bbox_inches='tight')
+        print(f"图像已保存至: {savepath}")
+    plt.show()
+    return fig, ax
+
+
+# ============================================================
+# 主程序 — 在此修改参数
+# ============================================================
+if __name__ == "__main__":
+    exp   = MicroBooNE()
+    model = NeutrinoModels()
+
+    params = {
+        'theta14': 0.15, 'theta24': 0.13,
+        'theta15': 0.13, 'theta25': 0.17,
+        'theta34': 0.,   'theta35': 0.,   'theta45': 0.,
+        'delta14': 0.,   'delta15': 0.,   'delta24': 0.,
+        'delta25': 0.,   'delta34': 0.,   'delta35': 0., 'delta45': 0.,
+        'dm41'   : -0.87, 'dm51'  : 0.47,
+    }
+
+    plot_spectrum(
+        exp        = exp,
+        model      = model,
+        params     = params,
+        savepath   = "microboone_spectrum.png",
+    )

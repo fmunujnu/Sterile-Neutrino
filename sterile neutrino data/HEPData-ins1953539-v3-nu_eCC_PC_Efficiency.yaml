@@ -1,0 +1,56 @@
+dependent_variables:
+- header: {name: $\nu_e$CC PC Efficiency, units: efficiency}
+  values:
+  - errors:
+    - symerror: 0.00131891
+      label: stat
+    value: 0.0318645
+  - errors:
+    - symerror: 0.00181321
+      label: stat
+    value: 0.0642401
+  - errors:
+    - symerror: 0.00272214
+      label: stat
+    value: 0.0984958
+  - errors:
+    - symerror: 0.00272386
+      label: stat
+    value: 0.114637
+  - errors:
+    - symerror: 0.00272354
+      label: stat
+    value: 0.131402
+  - errors:
+    - symerror: 0.00279194
+      label: stat
+    value: 0.155323
+  - errors:
+    - symerror: 0.00270826
+      label: stat
+    value: 0.170041
+  - errors:
+    - symerror: 0.00279237
+      label: stat
+    value: 0.186076
+  - errors:
+    - symerror: 0.00202822
+      label: stat
+    value: 0.212205
+  - errors:
+    - symerror: 0.00173699
+      label: stat
+    value: 0.244749
+independent_variables:
+- header: {name: True Neutrino Energy, units: GeV}
+  values:
+  - {low: 0.2, high: 0.54}
+  - {low: 0.54, high: 0.705}
+  - {low: 0.705, high: 0.805}
+  - {low: 0.805, high: 0.920}
+  - {low: 0.920, high: 1.050}
+  - {low: 1.050, high: 1.200}
+  - {low: 1.200, high: 1.375}
+  - {low: 1.375, high: 1.570}
+  - {low: 1.570, high: 2.050}
+  - {low: 2.050, high: 4.000}
