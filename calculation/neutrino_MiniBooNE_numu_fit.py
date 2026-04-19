@@ -5,8 +5,8 @@ from scipy.stats import chi2 as chi2_dist
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 
-import sys
-import io
+#import sys
+#import io
 
 # 强制标准输出使用 utf-8 编码
 #sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
