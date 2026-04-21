@@ -1,0 +1,12 @@
+[workspace]
+restore_data_on_startup = True
+save_data_on_exit = True
+save_history = True
+save_non_project_files = False
+project_type = 'empty-project-type'
+recent_files = ['calculation\\draw_flux.py', 'calculation\\test chonggou1.py', 'calculation\\neutrino_MiniBooNE_numu_fit.py']
+
+[main]
+version = 0.2.0
+recent_files = []
+
