@@ -1,221 +1,214 @@
-"""
-FDR / Flight Data Recorder – CSV Visualizer (MODIFIED)
-=====================================================
-
-改动说明：
-✔ 不降采样（适用于稀疏数据）
-✔ 每10列一组
-✔ 稀疏数据绘图优化（marker + 仅绘制有效点）
-✔ 图高度自适应，保证可读性
-
-用法:
-    python fdr_plot.py your_data.csv
-"""
-
-import sys
 import re
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
-from matplotlib.ticker import AutoMinorLocator
-import warnings
+from matplotlib.ticker import ScalarFormatter
 import os
 
-warnings.filterwarnings("ignore")
-
-# ─────────────────────────────────────────────────────────────────────────────
-# CONFIG
-# ─────────────────────────────────────────────────────────────────────────────
-CSV_PATH   = "ExatSample.csv"
-DPI        = 150
-FIG_WIDTH  = 24
-SAVE_PNG   = True
+# ─────────────────────────────────────────────
+# CONFIG / 配置参数
+# ─────────────────────────────────────────────
+CSV_PATH = "ExactSample.csv"
 OUTPUT_DIR = "."
+DPI = 200
+GROUP_SIZE = 10
 
-GROUP_SIZE = 10   # ⭐ 每组10列（可改5更清晰）
+# 时间范围过滤：设置为 [288955, float('inf')] 即可绘制 288955 之后的所有数据
+TIME_RANGE = [288955, float('inf')]  
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 1. 读取头
-# ─────────────────────────────────────────────────────────────────────────────
-print(f"[1/5] 读取文件头: {CSV_PATH}")
+# ─────────────────────────────────────────────
+# 1. 数据加载与智能状态映射
+# ─────────────────────────────────────────────
+def load_and_clean_data(path):
+    with open(path, "r", encoding="utf-8", errors="ignore") as f:
+        raw_lines = f.readlines()
 
-raw_header = pd.read_csv(
-    CSV_PATH, header=None, nrows=14,
-    low_memory=False, encoding_errors="replace"
-)
+    lines = [l.strip() for l in raw_lines if l.strip()]
 
-names_row = [str(x).strip() for x in raw_header.iloc[11].tolist()]
-units_row = [str(x).strip() for x in raw_header.iloc[12].tolist()]
-dtype_row = [str(x).strip() for x in raw_header.iloc[13].tolist()]
+    try:
+        data_idx = next(i for i, l in enumerate(lines) if l.upper().startswith("DATA"))
+    except StopIteration:
+        raise ValueError("CSV 文件中未找到 'DATA' 标记行")
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 2. 读取数据
-# ─────────────────────────────────────────────────────────────────────────────
-print("[2/5] 读取数据...")
+    names = [n.strip() for n in lines[data_idx+1].split(",")]
+    units = [u.strip() for u in lines[data_idx+2].split(",")]
+    types = [t.strip() for t in lines[data_idx+3].split(",")]
 
-df_raw = pd.read_csv(
-    CSV_PATH,
-    skiprows=14,
-    header=None,
-    low_memory=False,
-    encoding_errors="replace",
-    na_values=["", " ", "nan", "NaN", "N/A"]
-)
+    data_rows = []
+    expected_cols = len(names)
+    for l in lines[data_idx+4:]:
+        row = [val.strip() for val in l.split(",")]
+        if len(row) < expected_cols:
+            row.extend([""] * (expected_cols - len(row)))
+        else:
+            row = row[:expected_cols]
+        data_rows.append(row)
 
-n_cols = min(len(names_row), df_raw.shape[1])
-df_raw = df_raw.iloc[:, :n_cols]
-df_raw.columns = names_row[:n_cols]
+    df_raw = pd.DataFrame(data_rows, columns=names)
+    time_col = names[0]
+    
+    # 转换时间列
+    df_raw[time_col] = pd.to_numeric(df_raw[time_col], errors='coerce')
+    df_raw = df_raw.dropna(subset=[time_col])
 
-names_row = names_row[:n_cols]
-units_row = (units_row + [""] * n_cols)[:n_cols]
-dtype_row = (dtype_row + ["NUMBER"] * n_cols)[:n_cols]
+    # 智能处理每一列
+    processed_data = {time_col: df_raw[time_col].values}
+    col_meta_updates = {}
 
-# 转数值
-print("[3/5] 转换数值...")
-for col in df_raw.columns:
-    df_raw[col] = pd.to_numeric(
-        df_raw[col].astype(str).str.strip(),
-        errors="coerce"
-    )
+    for col in names[1:]:
+        # 尝试转数字
+        numeric_series = pd.to_numeric(df_raw[col].replace('', np.nan), errors='coerce')
+        
+        # 处理非数值字符（如 NORMAL/UNAVAIL）
+        if numeric_series.isnull().all() and not df_raw[col].replace('', np.nan).isnull().all():
+            unique_words = sorted([str(w) for w in df_raw[col].unique() if w != ''])
+            word_map = {word: float(i) for i, word in enumerate(unique_words)}
+            processed_data[col] = df_raw[col].map(word_map).values
+            col_meta_updates[col] = {"is_forced_enum": True, "forced_map": {v: k for k, v in word_map.items()}}
+        else:
+            processed_data[col] = numeric_series.values
+            col_meta_updates[col] = {"is_forced_enum": False}
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 3. 解析元数据（离散）
-# ─────────────────────────────────────────────────────────────────────────────
-_ENUM_RE = re.compile(r'([\d.eE+\-]+)\s*:\s*[\d.eE+\-]+\s*=\s*"([^"]*)"')
+    df = pd.DataFrame(processed_data)
+    
+    # 按时间聚合（合并稀疏行）
+    df = df.groupby(time_col, as_index=False).first()
+    
+    # 【时间范围过滤逻辑】
+    if TIME_RANGE is not None:
+        df = df[(df[time_col] >= TIME_RANGE[0]) & (df[time_col] <= TIME_RANGE[1])]
+        print(f"时间过滤完成，起始时间: {TIME_RANGE[0]}, 保留数据点: {len(df)}")
 
-def parse_dtype(dtype_str):
-    s = dtype_str.strip()
-    if s.upper() == "NUMBER" or not s.startswith("%"):
-        return False, {}
-    enum_map = {}
-    for v, lbl in _ENUM_RE.findall(s):
-        try:
-            enum_map[float(v)] = lbl
-        except:
-            pass
-    return True, enum_map
+    return df, names, units, types, col_meta_updates
 
-meta = {}
-for i, name in enumerate(names_row):
-    is_disc, emap = parse_dtype(dtype_row[i])
-    meta[name] = {
-        "unit": units_row[i],
-        "is_discrete": is_disc,
-        "enum_map": emap,
-    }
+# ─────────────────────────────────────────────
+# 2. 解析 %N 离散映射
+# ─────────────────────────────────────────────
+ENUM_RE = re.compile(r'([\d.eE+\-]+)\s*:\s*[\d.eE+\-]+\s*="([^"]+)"')
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 4. 时间列（不降采样）
-# ─────────────────────────────────────────────────────────────────────────────
-time_col = names_row[0]
-for n in names_row:
-    if any(k in n.lower() for k in ("time", "utc", "sec")):
-        time_col = n
-        break
+def parse_enum_meta(names, units, types, forced_updates):
+    meta = {}
+    for i, c in enumerate(names):
+        t_str = types[i]
+        is_enum = t_str.startswith("%N") or forced_updates.get(c, {}).get("is_forced_enum", False)
+        
+        enum_map = {}
+        # 解析表头的 %N 定义
+        matches = ENUM_RE.findall(t_str)
+        for v, label in matches:
+            try: enum_map[float(v)] = label
+            except: pass
+        
+        # 合并强制映射
+        if forced_updates.get(c, {}).get("is_forced_enum"):
+            enum_map.update(forced_updates[c]["forced_map"])
+        
+        meta[c] = {
+            "unit": units[i],
+            "is_enum": is_enum,
+            "enum": enum_map
+        }
+    return meta
 
-print(f"    时间列: {time_col}")
-print(f"    总行数: {len(df_raw):,}（不降采样）")
+# ─────────────────────────────────────────────
+# 3. 绘图：增强阶跃效果与坐标轴修复
+# ─────────────────────────────────────────────
+def plot_fdr_stack(df, cols, time_col, meta_info, title="FDR Plot"):
+    if df.empty:
+        print("Warning: 所选时间范围内没有数据点。")
+        return None
 
-t = df_raw[time_col].values.astype(float)
-df = df_raw.reset_index(drop=True)
+    n = len(cols)
+    fig, axes = plt.subplots(n, 1, figsize=(16, max(2.2 * n, 5)), sharex=True, dpi=DPI)
+    if n == 1: axes = [axes]
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 5. 每10列分组
-# ─────────────────────────────────────────────────────────────────────────────
-data_cols = [c for c in names_row if c != time_col]
+    t = df[time_col].values
 
-group_cols = {}
-for i in range(0, len(data_cols), GROUP_SIZE):
-    group_name = f"Group {i//GROUP_SIZE + 1}"
-    group_cols[group_name] = data_cols[i:i+GROUP_SIZE]
+    for i, col in enumerate(cols):
+        ax = axes[i]
+        m = meta_info[col]
+        
+        # 填充缺失值以保持阶跃线段连续
+        y_raw = df[col].ffill() 
+        y_vals = y_raw.values
+        
+        if np.all(np.isnan(y_vals)):
+            ax.text(0.5, 0.5, f"No Data: {col}", transform=ax.transAxes, ha='center', color='gray')
+        else:
+            if m["is_enum"]:
+                # 状态类数据：强制阶跃函数样式
+                ax.step(t, y_vals, where="post", color='#d62728', linewidth=1.8)
+                
+                # 动态设置纵轴刻度标签
+                present_vals = np.unique(y_vals[~np.isnan(y_vals)])
+                tick_vals = sorted(list(set(present_vals) | set(m["enum"].keys())))
+                if tick_vals:
+                    ax.set_yticks(tick_vals)
+                    ax.set_yticklabels([m["enum"].get(v, str(v)) for v in tick_vals])
+                    ax.set_ylim(min(tick_vals) - 0.5, max(tick_vals) + 0.5)
+            else:
+                # 数值类数据
+                ax.plot(t, y_vals, color='#1f77b4', linewidth=1.2, alpha=0.9)
+                valid_y = y_vals[~np.isnan(y_vals)]
+                if len(valid_y) > 0:
+                    ymin, ymax = np.min(valid_y), np.max(valid_y)
+                    pad = (ymax - ymin) * 0.2 if ymax != ymin else 1.0
+                    ax.set_ylim(ymin - pad, ymax + pad)
 
-print(f"\n[4/5] 分组 ({len(group_cols)} 组):")
-for g, cols in group_cols.items():
-    print(f"    {g}: {len(cols)} 列")
+        # 设置每个子图的背景网格和标签
+        unit_label = f"\n({m['unit']})" if m['unit'] and m['unit'] != '()' else ""
+        ax.set_ylabel(f"{col}{unit_label}", rotation=0, ha="right", va="center", fontsize=8)
+        ax.grid(True, linestyle=':', alpha=0.4)
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 6. 绘图函数（稀疏优化）
-# ─────────────────────────────────────────────────────────────────────────────
-PALETTE = [
-    "#e41a1c","#377eb8","#4daf4a","#ff7f00","#984ea3",
-    "#a65628","#f781bf","#999999","#1f78b4","#b2df8a"
-]
-
-def plot_group(name, cols):
-    cont = [c for c in cols if not meta[c]["is_discrete"]]
-    disc = [c for c in cols if meta[c]["is_discrete"]]
-
-    cont_h = max(6, len(cols) * 0.6)
-    disc_h = 1.0
-    fig_h = cont_h + len(disc) * disc_h
-
-    fig = plt.figure(figsize=(FIG_WIDTH, fig_h), dpi=DPI)
-    gs = gridspec.GridSpec(1 + len(disc), 1,
-                           height_ratios=[cont_h] + [disc_h]*len(disc),
-                           hspace=0.08)
-
-    ax = fig.add_subplot(gs[0])
-
-    # 连续数据
-    for i, col in enumerate(cont):
-        y = df[col].values
-        mask = ~np.isnan(y)
-
-        if mask.sum() < 2:
-            continue
-
-        ax.plot(
-            t[mask], y[mask],
-            color=PALETTE[i % len(PALETTE)],
-            linewidth=0.6,
-            marker='o',
-            markersize=2,
-            alpha=0.7,
-            label=col
-        )
-
-    ax.legend(fontsize=6, ncol=2)
-    ax.grid(True, alpha=0.3)
-    ax.set_title(name)
-
-    # 离散数据
-    for i, col in enumerate(disc):
-        axd = fig.add_subplot(gs[1+i], sharex=ax)
-        y = df[col].values
-        mask = ~np.isnan(y)
-
-        if mask.sum():
-            axd.step(t[mask], y[mask], where="post")
-
-        emap = meta[col]["enum_map"]
-        if emap:
-            axd.set_yticks(list(emap.keys()))
-            axd.set_yticklabels(list(emap.values()), fontsize=6)
-
-        axd.set_ylabel(col, fontsize=6, rotation=0, ha="right")
-        axd.grid(True, alpha=0.3)
-
-    ax.set_xlabel("Time")
-
+    # 【核心修复：双重保障禁用偏移量和科学计数法】
+    # 针对最底部的横轴进行设置
+    last_ax = axes[-1]
+    
+    # 方法1: 使用 ticklabel_format 直接控制
+    last_ax.ticklabel_format(style='plain', axis='x', useOffset=False)
+    
+    # 方法2: 显式设置 ScalarFormatter 作为后备
+    fmt = ScalarFormatter(useOffset=False)
+    fmt.set_scientific(False)
+    last_ax.xaxis.set_major_formatter(fmt)
+    
+    last_ax.set_xlabel(f"Time (sec)", fontsize=10, fontweight='bold')
+    plt.xlim(t.min(), t.max())
+    
+    # 确保标签不重叠
+    plt.setp(last_ax.get_xticklabels(), rotation=0)
+    
+    fig.suptitle(title, fontsize=14, fontweight='bold')
+    plt.tight_layout(rect=[0, 0, 1, 0.97])
     return fig
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 7. 生成图
-# ─────────────────────────────────────────────────────────────────────────────
-print("\n[5/5] 生成图像...")
-os.makedirs(OUTPUT_DIR, exist_ok=True)
+# ─────────────────────────────────────────────
+# 4. 执行
+# ─────────────────────────────────────────────
+def main():
+    if not os.path.exists(CSV_PATH):
+        print(f"Error: {CSV_PATH} not found.")
+        return
 
-count = 0
-for i, (name, cols) in enumerate(group_cols.items()):
-    print(f"  [{i+1}/{len(group_cols)}] {name}")
-    fig = plot_group(name, cols)
+    print("开始处理数据并应用绝对时间显示...")
+    df, names, units, types, forced_updates = load_and_clean_data(CSV_PATH)
+    meta_info = parse_enum_meta(names, units, types, forced_updates)
+    
+    time_col = names[0]
+    plot_cols = [c for c in names if c != time_col]
+    groups = [plot_cols[i:i+GROUP_SIZE] for i in range(0, len(plot_cols), GROUP_SIZE)]
+    
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    for i, g in enumerate(groups):
+        print(f"正在绘制组 {i+1}/{len(groups)} (时间段: {TIME_RANGE})...")
+        fig = plot_fdr_stack(df, g, time_col, meta_info, title=f"FDR Analysis (Absolute Time) - Group {i+1}")
+        if fig:
+            # 这里的命名根据时间过滤情况做了区分
+            suffix = "FULL" if TIME_RANGE is None else f"START_{TIME_RANGE[0]}"
+            fig.savefig(f"FDR_STACK_{suffix}_{i+1:02d}.png", bbox_inches="tight")
+            plt.close(fig)
 
-    path = os.path.join(OUTPUT_DIR, f"FDR_{i+1:02d}.png")
-    fig.savefig(path, dpi=DPI, bbox_inches="tight")
-    print(f"    → {path}")
+    print("完成！请检查输出的 PNG 文件，横轴应显示绝对秒数。")
 
-    count += 1
-
-print(f"\n完成！共生成 {count} 张图")
-plt.show()
+if __name__ == "__main__":
+    main()
