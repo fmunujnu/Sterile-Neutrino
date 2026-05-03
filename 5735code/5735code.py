@@ -4,21 +4,25 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.ticker import ScalarFormatter
 import os
+from PIL import Image
+
+# 由于NTSB的报告中的图表并没有给出全部数据
+# 使用一段简单的代码 绘制ExactSample.csv和Tableresolution.csv文件中的数据将其可视化
+# 最后合并图片 生成一个pdf
+
 
 # ─────────────────────────────────────────────
 # CONFIG / 配置参数
 # ─────────────────────────────────────────────
-CSV_PATH = "ExactSample.csv"
+CSV_PATH1 = "ExactSample.csv"
+CSV_PATH2 = "TableResolution.csv"
 OUTPUT_DIR = "."
 DPI = 200
 GROUP_SIZE = 10
 
-# 时间范围过滤：设置为 [288955, float('inf')] 即可绘制 288955 之后的所有数据
-TIME_RANGE = [288955, float('inf')]  
+# 时间范围过滤：设置为 [x, y] 即可绘制 这一区间内的所有数据
+TIME_RANGE = [288200, float('inf')]  
 
-# ─────────────────────────────────────────────
-# 1. 数据加载与智能状态映射
-# ─────────────────────────────────────────────
 def load_and_clean_data(path):
     with open(path, "r", encoding="utf-8", errors="ignore") as f:
         raw_lines = f.readlines()
@@ -81,9 +85,6 @@ def load_and_clean_data(path):
 
     return df, names, units, types, col_meta_updates
 
-# ─────────────────────────────────────────────
-# 2. 解析 %N 离散映射
-# ─────────────────────────────────────────────
 ENUM_RE = re.compile(r'([\d.eE+\-]+)\s*:\s*[\d.eE+\-]+\s*="([^"]+)"')
 
 def parse_enum_meta(names, units, types, forced_updates):
@@ -110,9 +111,6 @@ def parse_enum_meta(names, units, types, forced_updates):
         }
     return meta
 
-# ─────────────────────────────────────────────
-# 3. 绘图：增强阶跃效果与坐标轴修复
-# ─────────────────────────────────────────────
 def plot_fdr_stack(df, cols, time_col, meta_info, title="FDR Plot"):
     if df.empty:
         print("Warning: 所选时间范围内没有数据点。")
@@ -161,54 +159,106 @@ def plot_fdr_stack(df, cols, time_col, meta_info, title="FDR Plot"):
         ax.grid(True, linestyle=':', alpha=0.4)
 
     # 【核心修复：双重保障禁用偏移量和科学计数法】
-    # 针对最底部的横轴进行设置
     last_ax = axes[-1]
-    
-    # 方法1: 使用 ticklabel_format 直接控制
     last_ax.ticklabel_format(style='plain', axis='x', useOffset=False)
-    
-    # 方法2: 显式设置 ScalarFormatter 作为后备
     fmt = ScalarFormatter(useOffset=False)
     fmt.set_scientific(False)
     last_ax.xaxis.set_major_formatter(fmt)
-    
     last_ax.set_xlabel(f"Time (sec)", fontsize=10, fontweight='bold')
     plt.xlim(t.min(), t.max())
-    
-    # 确保标签不重叠
     plt.setp(last_ax.get_xticklabels(), rotation=0)
     
     fig.suptitle(title, fontsize=14, fontweight='bold')
     plt.tight_layout(rect=[0, 0, 1, 0.97])
     return fig
 
-# ─────────────────────────────────────────────
-# 4. 执行
-# ─────────────────────────────────────────────
-def main():
-    if not os.path.exists(CSV_PATH):
-        print(f"Error: {CSV_PATH} not found.")
-        return
 
-    print("开始处理数据并应用绝对时间显示...")
-    df, names, units, types, forced_updates = load_and_clean_data(CSV_PATH)
+# ─────────────────────────────────────────────
+# 核心：对单个 CSV 执行完整绘图流程，返回生成的 PNG 文件路径列表
+# ─────────────────────────────────────────────
+def process_csv(csv_path, tag):
+    """
+    读取 csv_path，绘制所有分组图，将 PNG 保存至 OUTPUT_DIR。
+    tag: 用于区分两套文件的前缀标识，如 "CSV1" / "CSV2"
+    返回：按顺序排列的 PNG 路径列表
+    """
+    if not os.path.exists(csv_path):
+        print(f"Error: {csv_path} not found，跳过。")
+        return []
+
+    print(f"\n{'='*60}")
+    print(f"开始处理：{csv_path}  [标识: {tag}]")
+    print(f"{'='*60}")
+
+    df, names, units, types, forced_updates = load_and_clean_data(csv_path)
     meta_info = parse_enum_meta(names, units, types, forced_updates)
-    
+
     time_col = names[0]
     plot_cols = [c for c in names if c != time_col]
     groups = [plot_cols[i:i+GROUP_SIZE] for i in range(0, len(plot_cols), GROUP_SIZE)]
-    
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
-    for i, g in enumerate(groups):
-        print(f"正在绘制组 {i+1}/{len(groups)} (时间段: {TIME_RANGE})...")
-        fig = plot_fdr_stack(df, g, time_col, meta_info, title=f"FDR Analysis (Absolute Time) - Group {i+1}")
-        if fig:
-            # 这里的命名根据时间过滤情况做了区分
-            suffix = "FULL" if TIME_RANGE is None else f"START_{TIME_RANGE[0]}"
-            fig.savefig(f"FDR_STACK_{suffix}_{i+1:02d}.png", bbox_inches="tight")
-            plt.close(fig)
 
-    print("完成！请检查输出的 PNG 文件，横轴应显示绝对秒数。")
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    generated_files = []
+
+    suffix = "FULL" if TIME_RANGE is None else f"START_{TIME_RANGE[0]}"
+
+    for i, g in enumerate(groups):
+        print(f"  正在绘制 [{tag}] 组 {i+1}/{len(groups)} ...")
+        fig = plot_fdr_stack(
+            df, g, time_col, meta_info,
+            title=f"FDR Analysis ({tag}) - Group {i+1}"
+        )
+        if fig:
+            fname = f"FDR_STACK_{tag}_{suffix}_{i+1:02d}.png"
+            fpath = os.path.join(OUTPUT_DIR, fname)
+            fig.savefig(fpath, bbox_inches="tight")
+            plt.close(fig)
+            generated_files.append(fpath)
+            print(f"    已保存：{fname}")
+
+    print(f"[{tag}] 共生成 {len(generated_files)} 张图片。")
+    return generated_files
+
+
+# ─────────────────────────────────────────────
+# 将图片列表合并为单个 PDF
+# ─────────────────────────────────────────────
+def merge_images_to_pdf(image_paths, output_pdf):
+    image_list = []
+    for img_path in image_paths:
+        img = Image.open(img_path)
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
+        image_list.append(img)
+
+    if image_list:
+        image_list[0].save(
+            output_pdf,
+            save_all=True,
+            append_images=image_list[1:]
+        )
+        print(f"\n成功！共合并 {len(image_list)} 张图片。")
+        print(f"PDF 保存至：{output_pdf}")
+    else:
+        print("错误：没有可合并的图片。")
+
+
+# ─────────────────────────────────────────────
+# 主流程
+# ─────────────────────────────────────────────
+def main():
+    # ① 分别处理两个 CSV，生成两套 PNG
+    files_csv1 = process_csv(CSV_PATH1, tag="CSV1")
+    files_csv2 = process_csv(CSV_PATH2, tag="CSV2")
+
+    # ② 按 CSV1 → CSV2 的顺序合并所有图片
+    all_files = files_csv1 + files_csv2
+
+    # ③ 输出 PDF
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    output_pdf  = os.path.join(current_dir, "MU5735FDR_latest_time.pdf")
+    merge_images_to_pdf(all_files, output_pdf)
+
 
 if __name__ == "__main__":
     main()
