@@ -22,6 +22,9 @@ MODEL      = '1+3+1'   # '3'  |  '3+1'  |  '3+2'  |  '1+3+1'
 SCAN_MODE  = 'fixed'   # 'fixed'  |  'profile'
 RUN_GLOBAL = True
 
+# 这个true 是干啥的
+
+
 # ── Parameter names for 1+3+1 / 3+2 (5-neutrino) models ────────────────────
 PARAM_NAMES = [
     'theta14','theta24','theta34','theta15','theta25','theta35','theta45',
@@ -32,8 +35,8 @@ PARAM_NAMES = [
 # ── Parameter config: initial value, optimizer bounds, log/linear scale ───────
 _z = dict(init=0., lo=0., hi=0., sc='linear')   # 复制了一份 _z 字典，从而快速将它们全部设为固定零值
 PARAM_CFG = {
-    'dm41'   : dict(init=0.87, lo=0.01, hi=100.,         sc='log'),
-    'dm51'   : dict(init=0.47, lo=0.01, hi=100.,         sc='log'),
+    'dm41'   : dict(init=0.87, lo=0.01, hi=100.,sc='log'),
+    'dm51'   : dict(init=0.47, lo=0.01, hi=100.,sc='log'),
     'theta14': dict(init=0.15, lo=1e-4, hi=1.0, sc='log'),
     'theta15': dict(init=0.13, lo=1e-4, hi=1.0, sc='log'),
     'theta24': dict(init=0.13, lo=1e-4, hi=1.0, sc='log'),
@@ -41,7 +44,8 @@ PARAM_CFG = {
     **{k: dict(**_z) for k in ['theta34','theta35','theta45',
                                 'delta14','delta15','delta24','delta25',
                                 'delta34','delta35','delta45']},
-}#确定区间 初值 fix
+}
+#确定区间 初值 fix
 
 # ── Coupling functions: map virtual scan axes to real parameters ─────────────
 def _couple_mode1(p, v1, v2):
@@ -49,18 +53,41 @@ def _couple_mode1(p, v1, v2):
     p['theta14'] = p['theta24'] = float(np.clip(np.sqrt(max(v1, 0.)), 0., 1.))
     p['theta15'] = p['theta25'] = float(np.clip(np.sqrt(max(v2, 0.)), 0., 1.))
 
-def _couple_mode3(p, v1, v2):
-    """sin²(2θ_eff) = 4 sin²θ14 sin²θ24 axis."""
-    st = float(np.clip((np.clip(v1, 1e-9, 1.) / 4.) ** 0.25, 0., 1.))
+def _couple_mode3_perfect_strict(p, v1, v2):
+    ##########本段令14/24相等 没有考虑5
+    """
+    禁止小角近似，严格求解: v1 = 4 * sin⁴θ * (1 - sin²θ)
+    满足条件: theta14 = theta24 = theta
+    """
+    # 1. 定义三次方程的系数: 4x³ - 4x² + 0x + v1 = 0
+    # 注意：我们找的是 x = sin²θ
+    coeffs = [4.0, -4.0, 0.0, float(v1)]
+    
+    # 2. 求根
+    roots = np.roots(coeffs)
+    
+    # 3. 筛选物理合理的根
+    # 物理上 sin²θ 必须是实数，且在 [0, 1] 之间。
+    # 对于该特定方程，在 v1 较小时，通常有一个极小的正实根。
+    real_roots = roots[np.isreal(roots)].real
+    valid_roots = real_roots[(real_roots >= 0) & (real_roots <= 1)]
+    
+    if len(valid_roots) > 0:
+        # 取最小的正根（对应物理上的小混合角分支）
+        st2 = np.min(valid_roots)
+    else:
+        # 如果 v1 超出物理极限 (16/27)，则做截断处理
+
+        print(f"error: couple_mode3_perfect_strict")
+
+    # 4. 赋值
+    st = float(np.arcsin(np.sqrt(st2)))
     p['theta14'] = p['theta24'] = st
     p['dm41'] = float(v2)
-###待改变 目前为1+3+1 需要改为3+1进行验证 并且进一步验证公式
 
 _zero_roles = {k: 0. for k in ['theta34','theta35','theta45',
                                  'delta14','delta15','delta24','delta25',
                                  'delta34','delta35','delta45']}
-###profile fix 0 delta待验证
-
 
 # ── Scan task definitions ─────────────────────────────────────────────────────
 SCAN_TASKS = [
@@ -225,9 +252,57 @@ def load_experiment():
     efficiency_e = np.full(len(E_centers), 0.20)
 
     sigma_mu = np.full(len(E_centers), 1e-38)
-    efficiency_mu = np.full(len(E_centers), 0.20)
+    
+    
+    eff_efc = np.array([
+        0.        , 0.03515726, 0.1230604, 0.17592975, 0.2216032, 0.27385078,
+        0.30083114, 0.30912699, 0.32330211, 0.32699299, 0.3247482, 0.32804201,
+        0.32729473, 0.33095618, 0.31724309, 0.31813633, 0.30701209, 0.31377639,
+        0.29874747, 0.29447149, 0.29277409, 0.28382266, 0.28116426, 0.27507559,
+        0.27508131, 0.25247578])
 
-    """改改改改改改"""
+    eff_epc = np.array([
+        0.        , 0.00397274, 0.0160696, 0.02624025, 0.0370968, 0.05223922,
+        0.07090886, 0.09739301, 0.11365789, 0.12735701, 0.1426418, 0.15891799,
+        0.16618527, 0.17774382, 0.18275691, 0.19490367, 0.19950791, 0.21448361,
+        0.21212253, 0.21639851, 0.22244591, 0.22269734, 0.22753574, 0.22927441,
+        0.23578869, 0.24535422])
+
+    eff_mufc = np.array([
+        0.        , 0.        , 0.0527866,  0.24883974, 0.31415519, 0.32502141,
+        0.33006293, 0.30783141, 0.27433627, 0.23660959, 0.20688314, 0.18432302,
+        0.16461115, 0.15197599, 0.14028143, 0.13356655, 0.12439114, 0.11702154,
+        0.11043099, 0.10520339, 0.10118324, 0.09604268, 0.09409804, 0.08869908,
+        0.08551871, 0.05957836])
+
+    eff_mupc = np.array([
+        0.        , 0.        , 0.0201334,  0.09491026, 0.16292481, 0.21872859,
+        0.28035707, 0.34216859, 0.40691373, 0.46339041, 0.50144686, 0.53442698,
+        0.55413885, 0.57510401, 0.58888857, 0.60810345, 0.61310886, 0.62672846,
+        0.63331901, 0.63229661, 0.63839676, 0.63728732, 0.65798196, 0.65505092,
+        0.66865129, 0.67584164])
+
+
+    crosssection_mu = np.array([
+        0.06982607, 0.20947822, 0.34913037, 0.48878252, 0.56058346, 0.62124627,
+        0.67516347, 0.71623957, 0.73788154, 0.75280018, 0.76258204, 0.76836158,
+        0.76836158, 0.7703674,  0.77342192, 0.77669262, 0.78001502, 0.78333742,
+        0.78512129, 0.78465474, 0.78418819, 0.78372164, 0.78325509, 0.78278854,
+        0.78232199, 0.77975596])
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     # ── True-to-reco response matrix ────────────────────────────────────────
     n_true, n_obs = len(E_centers), len(obs_centers)
@@ -256,12 +331,16 @@ def load_experiment():
         background=background,
         covariance=covariance,
 
-        response_matrix_e=response_matrix_e,
-        response_matrix_mu=response_matrix_mu,
+        response_matrix_e  =response_matrix_e,
+        response_matrix_eb =response_matrix_eb,
+        response_matrix_mu =response_matrix_mu,
+        response_matrix_mub=response_matrix_mub,
 
-        efficiency_matrix_e=efficiency_matrix_e,
-        efficiency_matrix_mu=efficiency_matrix_mu,
-        
+        efficiency_matrix_e  =efficiency_matrix_e,
+        efficiency_matrix_eb =efficiency_matrix_eb,
+        efficiency_matrix_mu =efficiency_matrix_mu,
+        efficiency_matrix_mub=efficiency_matrix_mub,
+########################################################################
         numu_flux=numu_flux * pot * N_target,
         numub_flux=numub_flux * pot * N_target,
         nue_flux=nue_flux * pot * N_target,
@@ -533,4 +612,200 @@ def scan_fixed_2d(ax1, grid1, ax2, grid2, exp,
 
 
 
+
+
+
+
+### profile
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Part 5 · Plotting
+# ═══════════════════════════════════════════════════════════════════════════
+
+def plot_spectrum(exp, best_params, savepath=None):
+    """
+    绘制能谱图：
+    1. 使用相对协方差矩阵计算绝对误差，并应用到观测数据的误差棒上。
+    2. 移除了预估数据的颜色填充阴影。
+    """
+    bkg   = exp['background']
+    sig   = compute_spectrum(best_params, exp)
+    total = bkg + sig  # 理论预测值 N_i
+    data  = exp['observed']
+    E     = exp['obs_centers']
+    xerr  = [E - exp['Elo'], exp['Ehi'] - E]
+
+    # ── 核心逻辑：从相对协方差计算绝对误差 (sigma_i) ────────────────────────
+    
+    frac_cov = exp['covariance']
+    # 计算绝对误差 sigma_i = sqrt(相对方差_ii) * 预测值_i
+    # np.diag(frac_cov) 提取对角线上的相对方差
+    total_err = np.sqrt(np.diag(frac_cov)) * total
+    
+    # 准备阶梯图数据 (用于预测线)
+    E_step = np.append(exp['Elo'], exp['Ehi'][-1])
+    T_step = np.append(total, total[-1])
+    B_step = np.append(bkg, bkg[-1])
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    # 1. 绘制背景线 (虚线)
+    ax.step(E_step, B_step, where='post',
+            color='steelblue', ls='--', lw=1.6, label='Background only')
+    
+    # 2. 绘制总预测线 (实线)
+    ax.step(E_step, T_step, where='post',
+            color='steelblue', ls='-', lw=2., label='Bkg + prediction (signal)')
+
+    # 【此处已完全删去 ax.fill_between 颜色填充代码】
+
+    # 3. 绘制观测数据点 (使用计算出的真实误差 total_err)
+    ax.errorbar(E, data, 
+                yerr=total_err,           # <--- 关键修改：使用协方差导出的真实误差
+                xerr=xerr, 
+                fmt='o', 
+                color='crimson', 
+                ms=7, 
+                capsize=4, 
+                elinewidth=1.5,
+                markeredgewidth=1.2, 
+                label='Observed data (w/ Covariance Error)')
+
+    # ── 图形修饰 ────────────────────────────────────────────────────────────
+    ax.set_xlabel(r'Reconstructed $E_\nu^{\rm QE}\ \rm [GeV]$', fontsize=13)
+    ax.set_ylabel('Event count', fontsize=13)
+    ax.set_title(f'MicroBooNE — Prediction vs Data', fontsize=12)
+    
+    ax.legend(fontsize=11, loc='upper right', framealpha=0.85)
+    ax.tick_params(which='both', direction='in', top=True, right=True, labelsize=11)
+    ax.grid(True, ls='--', alpha=0.3)
+    ax.set_xlim(exp['Elo'][0]*0.98, exp['Ehi'][-1]*1.02)
+    ax.set_ylim(bottom=0.)
+    
+    fig.tight_layout()
+    if savepath: fig.savefig(savepath, dpi=150, bbox_inches='tight')
+    plt.show()
+    
+    return fig, ax
+
+
+def plot_contour(grid1, grid2, TS_grid, xlabel, ylabel, title,
+                 xscale='log', yscale='log',
+                 best_xy=None, global_best_xy=None, ts_at_global=None,
+                 chi2_null_val=None, chi2_scan_min=None, chi2_global_min=None,
+                 savepath=None):
+    """Two-panel plot: (left) chi2 heatmap, (right) allowed contours."""
+    crits  = [chi2_dist.ppf(cl, df=2) for cl in [0.68, 0.90, 0.99]]
+    labels = ['68% CL', '90% CL', '99% CL']
+    styles = [':', '-', '--']
+    alphas = [0.15, 0.10, 0.05]
+    ts_max = float(np.nanmax(TS_grid))
+    X, Y   = np.meshgrid(grid1, grid2, indexing='ij')
+
+    # ── Figure layout ────────────────────────────────────────────────────────
+    sq, cb_gap, cb_w = 5.5, 0.10, 0.22
+    pad_l, pad_r, pad_t, pad_b, gap = 0.85, 0.35, 0.75, 0.80, 1.5
+    fw = pad_l + sq + cb_gap + cb_w + gap + sq + pad_r
+    fh = pad_t + sq + pad_b
+    fig = plt.figure(figsize=(fw, fh))
+    ax1  = fig.add_axes([pad_l/fw,                      pad_b/fh, sq/fw,    sq/fh])
+    cax  = fig.add_axes([(pad_l+sq+cb_gap)/fw,          pad_b/fh, cb_w/fw,  sq/fh])
+    ax2  = fig.add_axes([(pad_l+sq+cb_gap+cb_w+gap)/fw, pad_b/fh, sq/fw,    sq/fh])
+
+    # ── Left: heatmap ────────────────────────────────────────────────────────
+    vmax = min(ts_max*1.1, crits[-1]*4.) if ts_max > 0 else 10.
+    pcm  = ax1.pcolormesh(X, Y, TS_grid, shading='auto', cmap='viridis_r', vmin=0., vmax=vmax)
+    cb   = fig.colorbar(pcm, cax=cax)
+    cb.set_label(r'$\Delta\chi^2$', fontsize=14, labelpad=8)
+    cb.ax.tick_params(labelsize=12)
+    for level, ls in zip(crits, styles):
+        if ts_max >= level:
+            ax1.contour(X, Y, TS_grid, levels=[level], colors=['r'],
+                        linestyles=[ls], linewidths=1.8, zorder=3)
+    if best_xy:
+        ax1.plot(*best_xy, '*', color='gold', ms=14, mec='k', mew=0.8, zorder=7,
+                 label=f'Best fit (TS≡0)\n({best_xy[0]:.3g}, {best_xy[1]:.3g})')
+        ax1.legend(fontsize=10, loc='upper right', framealpha=0.85)
+
+    # ── Right: allowed regions ───────────────────────────────────────────────
+    legend_h = []
+    for level, lbl, ls, fa in zip(crits, labels, styles, alphas):
+        if ts_max >= level:
+            try:
+                ax2.contour(X, Y, TS_grid, levels=[level], colors=['r'], linestyles=[ls], linewidths=2.)
+                ax2.contourf(X, Y, TS_grid, levels=[0., level], colors=['r'], alpha=fa)
+            except Exception: pass
+        legend_h.append(Line2D([0],[0], color='r' if ts_max >= level else '#aaa',
+                                ls=ls, lw=2., label=lbl))
+    if best_xy:
+        pt, = ax2.plot(*best_xy, '*', color='gold', ms=14, mec='k', mew=0.8,
+                       zorder=7, label='Best fit (TS≡0)')
+        legend_h.append(pt)
+
+    show_global = (global_best_xy is not None and ts_at_global is not None
+                   and np.isfinite(ts_at_global)
+                   and ts_at_global < chi2_dist.ppf(0.90, 2))
+    if show_global:
+        gpt, = ax2.plot(*global_best_xy, 'D', color='cyan', ms=9, mec='k', mew=0.8, zorder=6,
+                        label=f'Global best proj. (TS={ts_at_global:.2f})')
+        legend_h.append(gpt)
+
+    info = []
+    if chi2_null_val    is not None: info.append(r'$\chi^2_{\rm null}='      + f'{chi2_null_val:.2f}$')
+    if chi2_scan_min    is not None: info.append(r'$\chi^2_{\rm scan\,min}=' + f'{chi2_scan_min:.2f}$')
+    if chi2_global_min  is not None: info.append(r'$\chi^2_{\rm global}='    + f'{chi2_global_min:.2f}$')
+    if chi2_null_val and chi2_scan_min:
+        info.append(r'$\Delta\chi^2_{\rm sig}=' + f'{chi2_null_val - chi2_scan_min:.2f}$')
+    if ts_at_global and not show_global and np.isfinite(ts_at_global):
+        info.append(r'Global proj. $\Delta{\rm TS}=' + f'{ts_at_global:.2f}$')
+    if info:
+        ax2.text(0.03, 0.03, '\n'.join(info), transform=ax2.transAxes,
+                 fontsize=10, ha='left', va='bottom',
+                 bbox=dict(boxstyle='round,pad=0.35', fc='white', ec='gray', alpha=0.82))
+    ax2.legend(handles=legend_h, loc='upper right', fontsize=10, framealpha=0.85)
+
+    for ax in (ax1, ax2):
+        ax.set_xscale(xscale); ax.set_yscale(yscale)
+        ax.set_xlabel(xlabel, fontsize=14); ax.set_ylabel(ylabel, fontsize=14)
+        ax.tick_params(which='both', direction='in', top=True, right=True, labelsize=12)
+        ax.grid(True, which='both', ls='--', alpha=0.25)
+    ax1.set_title(f"MiniBooNE {MODEL} — {title}  " + r"$\Delta\chi^2$ map", fontsize=12, pad=8)
+    ax2.set_title(f"MiniBooNE {MODEL} — {title}  Allowed regions",           fontsize=12, pad=8)
+
+    if savepath: fig.savefig(savepath, dpi=150, bbox_inches='tight')
+    plt.show()
+
+load_experiment
 

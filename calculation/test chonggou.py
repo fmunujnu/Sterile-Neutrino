@@ -556,54 +556,6 @@ def _minimize_free(fixed, free_nms, free_bds, exp, global_best_p=None, seed=0):
     return best_p, float(2. * best_fun)
 
 
-# ── Profile likelihood 2D scan ────────────────────────────────────────────────
-
-def scan_profile_2d(ax1, grid1, ax2, grid2, exp,
-                    param_roles=None, couple=None,
-                    chi2_global_min=None, global_best_p=None):
-    """
-    2D profile likelihood scan: at each grid point, minimise chi2 over 'free'
-    parameters specified in param_roles.
-
-    Requires chi2_global_min from global_minimize() to compute ΔTS.
-
-    Returns
-    -------
-    chi2_grid      : (n1,n2) array
-    TS_grid        : (n1,n2) ΔTS = chi2 − chi2_global_min
-    best_xy        : (v1, v2) with lowest chi2 on grid
-    chi2_global_min: float (passed through as reference)
-    best_fp        : param dict at best_xy
-    """
-    assert chi2_global_min is not None, "Call global_minimize() before scan_profile_2d()."
-    if param_roles is None: param_roles = {}
-
-    all_bounds = _get_bounds()
-    free_nms   = [nm for nm in PARAM_NAMES if param_roles.get(nm,'fixed_init') == 'free']
-    free_bds   = [all_bounds[PARAM_NAMES.index(nm)] for nm in free_nms]
-
-    n1, n2 = len(grid1), len(grid2)
-    chi2_grid   = np.full((n1, n2), np.nan)
-    param_store = [[None]*n2 for _ in range(n1)]
-    total, done = n1*n2, 0
-
-    for i, v1 in enumerate(grid1):
-        for j, v2 in enumerate(grid2):
-            fixed = _build_fixed_dict(ax1, ax2, v1, v2, param_roles, couple)
-            best_p, c2 = _minimize_free(fixed, free_nms, free_bds, exp,
-                                         global_best_p=global_best_p, seed=done)
-            chi2_grid[i,j]    = c2
-            param_store[i][j] = best_p
-            done += 1
-            if done % max(1, total//20) == 0:
-                print(f"  [profile] {done}/{total} ({100*done/total:.0f}%)", flush=True)
-
-    TS_grid = np.maximum(0., chi2_grid - chi2_global_min)
-    idx     = np.unravel_index(np.nanargmin(chi2_grid), chi2_grid.shape)
-    return (chi2_grid, TS_grid,
-            (float(grid1[idx[0]]), float(grid2[idx[1]])),
-            chi2_global_min, param_store[idx[0]][idx[1]])
-
 
 # ── TS at global best projection ──────────────────────────────────────────────
 
@@ -840,3 +792,9 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+
+
+
+
+
