@@ -1,4 +1,6 @@
 {
+    "python.defaultInterpreterPath": "C:\\Users\\Fmunu\\.conda\\envs\\scientific-calculate\\python.exe",
+    "python.terminal.activateEnvironment": true,
     "python-envs.pythonProjects": [
         {
             "path": ".",

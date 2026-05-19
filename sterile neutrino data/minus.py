@@ -19,4 +19,4 @@ array2 = np.array(
 result_array = array1 - array2
 
 # 输出新数组
-print("相减后的新数组:", result_array)
+print("new array:", result_array)
