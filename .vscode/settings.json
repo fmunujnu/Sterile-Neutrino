@@ -1,11 +1,6 @@
 {
     "python.defaultInterpreterPath": "C:\\Users\\Fmunu\\.conda\\envs\\scientific-calculate\\python.exe",
     "python.terminal.activateEnvironment": true,
-    "python-envs.pythonProjects": [
-        {
-            "path": ".",
-            "envManager": "ms-python.python:conda",
-            "packageManager": "ms-python.python:conda"
-        }
-    ]
+    "python-envs.defaultEnvManager": "ms-python.python:conda",
+    "python-envs.defaultPackageManager": "ms-python.python:conda"
 }

@@ -1,127 +1,133 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.interpolate import CubicSpline
 
-# 设置支持中文的字体和负号显示
 plt.rcParams['font.sans-serif'] = ['Arial Unicode MS', 'SimHei', 'DejaVu Sans']
 plt.rcParams['axes.unicode_minus'] = False
 
 # =====================================================================
-# 1. 硬编码实验数据点 (基于 MicroBooNE NuMI 真实数据提取)
-# 数据格式: [bin上界, 微分截面值 dsigma/dEe]
-# 微分截面单位: 10^-39 cm^2 / GeV / nucleon
-# 第一个 bin 的下界默认为 0.0
+# 1. 实验数据：阶梯函数
+#    第 1 列 = bin 上界 x；第 2 列 = 该 bin 内常数值
+#    第 1 个 bin 下界 = 0；相邻 bin 共享边界（上界 = 下一 bin 下界）
 # =====================================================================
-experimental_data = [
-    [0.4, 2.72],   # Bin 1: [0.0, 0.4] GeV, dsigma/dEe = 2.72
-    [0.8, 4.15],   # Bin 2: [0.4, 0.8] GeV, dsigma/dEe = 4.15
-    [1.2, 2.98],   # Bin 3: [0.8, 1.2] GeV, dsigma/dEe = 2.98
-    [1.6, 1.58],   # Bin 4: [1.2, 1.6] GeV, dsigma/dEe = 1.58
-    [3.0, 0.28],   # Bin 5: [1.6, 3.0] GeV, dsigma/dEe = 0.28
-    [6.0, 0.02]    # Bin 6: [3.0, 6.0] GeV, dsigma/dEe = 0.02
-]
+experimental_data = np.array([
+    [0.300, 2.891],
+    [0.475, 5.385],
+    [0.700, 3.982],
+    [1.000, 2.666],
+    [1.427, 1.350],
+    [3.000, 0.259],
+    [6.000, 0.069],
+])
 
-# 提取边界与微分截面值
-edges = [0.0] + [row[0] for row in experimental_data]
-diff_cross_sections = [row[1] for row in experimental_data]
+E_MIN, E_MAX = 0.0, 6.0
+N_BINS = 60
+BIN_WIDTH = (E_MAX - E_MIN) / N_BINS
 
-print(">>> 原始实验数据 (微分截面):")
-for i in range(len(diff_cross_sections)):
-    print(f"  Bin {i+1}: [{edges[i]:.1f}, {edges[i+1]:.1f}] GeV, dsigma/dEe = {diff_cross_sections[i]:.4f}")
+# 原始阶梯边界与常数值
+edges_orig = np.concatenate(([E_MIN], experimental_data[:, 0]))
+values_orig = experimental_data[:, 1]
+centers_orig = 0.5 * (edges_orig[:-1] + edges_orig[1:])
 
-# =====================================================================
-# 2. 计算原始数据的累积总截面 (Cumulative Total Cross Section)
-# 累积截面 F(E) = \int_0^E (dsigma/dEe) dE
-# 在每个原始边界处的值是离散积分值
-# =====================================================================
-cumulative_sigma = [0.0]
-for i in range(len(diff_cross_sections)):
-    width = edges[i+1] - edges[i]
-    # 矩形积分积分值
-    bin_integral = diff_cross_sections[i] * width
-    cumulative_sigma.append(cumulative_sigma[-1] + bin_integral)
-
-print("\n>>> 原始边界处的累积总截面 (10^-39 cm^2/nucleon):")
-for i, E in enumerate(edges):
-    print(f"  E = {E:.1f} GeV: Cumulative Sigma = {cumulative_sigma[i]:.4f}")
+print(">>> 原始阶梯数据 (dsigma/dEe, 10^-39 cm^2/GeV/nucleon):")
+for i in range(len(values_orig)):
+    print(f"  Bin {i + 1}: [{edges_orig[i]:.3f}, {edges_orig[i + 1]:.3f}] GeV  ->  {values_orig[i]:.4f}")
 
 # =====================================================================
-# 3. 使用三次多项式样条 (Cubic Spline) 插值
-# 对离散的累积截面点 (edges, cumulative_sigma) 进行平滑插值
-# 这样不仅保证在原始边界处物理总截面守恒，还能平滑地计算任意新边界的值
+# 2. [0, 6] 上均匀 60 个 bin，对阶梯函数做分段线性插值
+#    在原始 bin 中心处取常数值，再线性插值到新 bin 边界
 # =====================================================================
-cs = CubicSpline(edges, cumulative_sigma, bc_type='clamped')
+uniform_edges = np.linspace(E_MIN, E_MAX, N_BINS + 1)
+f_at_edges = np.interp(
+    uniform_edges,
+    centers_orig,
+    values_orig,
+    left=values_orig[0],
+    right=values_orig[-1],
+)
 
-# =====================================================================
-# 4. 重新分 bin: 从 0 开始，每 0.5 GeV 一个 bin，直到 6.0 GeV
-# =====================================================================
-new_bin_width = 0.5
-new_edges = np.arange(0.0, 6.0 + new_bin_width, new_bin_width)
-
-# 利用多项式插值计算新边界处的累积总截面值
-new_cumulative_sigma = cs(new_edges)
-# 物理约束：累积截面必须单调递增且非负
-for i in range(1, len(new_cumulative_sigma)):
-    if new_cumulative_sigma[i] < new_cumulative_sigma[i-1]:
-        new_cumulative_sigma[i] = new_cumulative_sigma[i-1]
-
-# 计算每个新 bin 内的总截面 (Total Cross Section)
-# sigma_j = F(E_j) - F(E_{j-1})
-new_total_cross_sections = []
-for i in range(len(new_edges) - 1):
-    val = new_cumulative_sigma[i+1] - new_cumulative_sigma[i]
-    new_total_cross_sections.append(max(0.0, val))
-
-print("\n>>> 重新分 bin (每 0.5 GeV) 后的每个 bin 内的总截面 (Total Cross Section):")
-for i in range(len(new_total_cross_sections)):
-    print(f"  Bin {i+1:02d}: [{new_edges[i]:.1f}, {new_edges[i+1]:.1f}] GeV, Total Sigma = {new_total_cross_sections[i]:.4f}")
+# 每个新 bin 内的线性插值函数：端点值 f_at_edges[i], f_at_edges[i+1]
+# bin 中心处的插值代表值（用于展示）
+centers_uniform = 0.5 * (uniform_edges[:-1] + uniform_edges[1:])
+f_at_centers = 0.5 * (f_at_edges[:-1] + f_at_edges[1:])
 
 # =====================================================================
-# 5. 计算重新分 bin 后的微分截面，以便与输入进行对比
-# (dsigma/dEe)_new = sigma_j / delta_E
+# 3. 对插值后的分段线性函数在 [0, 6] 上积分 → 累积截面 F(E)
+#    F(E) = ∫_0^E f_lin(E') dE'
 # =====================================================================
-new_diff_cross_sections = [sig / new_bin_width for sig in new_total_cross_sections]
+cumulative_F = np.zeros(N_BINS + 1)
+for i in range(N_BINS):
+    f_left, f_right = f_at_edges[i], f_at_edges[i + 1]
+    cumulative_F[i + 1] = cumulative_F[i] + 0.5 * (f_left + f_right) * BIN_WIDTH
 
 # =====================================================================
-# 6. 绘图与对比
+# 4. 对积分结果 F(E) 在 60 个均匀 bin 上分 bin
+#    取每个 bin 右边界处的累积截面 F(E_{i+1})，长度 60，物理上单调递增
 # =====================================================================
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
+final_array = cumulative_F[1:].copy()
+final_array = np.maximum.accumulate(final_array)
 
-# ---- 子图 1: 总截面 (Total Cross Section) 阶梯图 ----
-# 绘制阶梯图需要将数据对齐到 bin 的边界上
-ax1.step(new_edges[:-1], new_total_cross_sections, where='post', color='teal', linewidth=2.5, label='重分 bin 后总截面 (0.5 GeV/bin)')
-# 在每个 bin 的中心画点标出数值
-bin_centers = new_edges[:-1] + new_bin_width / 2.0
-ax1.scatter(bin_centers, new_total_cross_sections, color='darkorange', zorder=3, label='Bin 中心值')
+np.set_printoptions(precision=6, suppress=True, linewidth=120)
+print("\n>>> 最终 60-bin 积分结果 (累积截面 F(E), 单调递增):")
+print(np.array2string(final_array, separator=', '))
+print(f"  单调性检查: {'通过' if np.all(np.diff(final_array) >= 0) else '未通过'}")
+print(f"  总截面 F(6 GeV) = {final_array[-1]:.6f}  (10^-39 cm^2/nucleon)")
 
-ax1.set_title('重分 Bin 后的总截面阶梯图', fontsize=14, fontweight='bold')
-ax1.set_xlabel('$E_e$ [GeV]', fontsize=12)
-ax1.set_ylabel(r'$\sigma$ [$10^{-39}$ $\mathrm{cm}^2/\mathrm{nucleon}$]', fontsize=12)
-ax1.set_xlim(0, 6.0)
+# =====================================================================
+# 5. 绘图：原始 / 插值 / 积分 / 最终结果
+# =====================================================================
+fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+
+# ---- (1) 原始阶梯数据 ----
+ax0 = axes[0, 0]
+ax0.step(edges_orig[:-1], values_orig, where='post', color='crimson', lw=2,
+         label='原始阶梯 (实验 bin)')
+ax0.set_title('原始阶梯数据', fontsize=12, fontweight='bold')
+ax0.set_xlabel(r'$E$ [GeV]')
+ax0.set_ylabel(r'$\mathrm{d}\sigma/\mathrm{d}E$ [$10^{-39}$ cm$^2$/GeV/nucleon]')
+ax0.set_xlim(E_MIN, E_MAX)
+ax0.set_ylim(bottom=0)
+ax0.grid(True, ls='--', alpha=0.5)
+ax0.legend()
+
+# ---- (2) 线性插值后的 60-bin 分段线性函数 ----
+ax1 = axes[0, 1]
+ax1.step(uniform_edges[:-1], f_at_edges[:-1], where='post', color='royalblue', lw=2,
+         label='插值后 (60 bin, 边界值)')
+ax1.plot(uniform_edges, f_at_edges, 'o', color='royalblue', ms=3, alpha=0.6)
+ax1.set_title('线性插值结果 (60 均匀 bin)', fontsize=12, fontweight='bold')
+ax1.set_xlabel(r'$E$ [GeV]')
+ax1.set_ylabel(r'$\mathrm{d}\sigma/\mathrm{d}E$ [$10^{-39}$ cm$^2$/GeV/nucleon]')
+ax1.set_xlim(E_MIN, E_MAX)
 ax1.set_ylim(bottom=0)
-ax1.grid(True, linestyle='--', alpha=0.6)
-ax1.legend(fontsize=10)
+ax1.grid(True, ls='--', alpha=0.5)
+ax1.legend()
 
-# ---- 子图 2: 新旧微分截面 (Differential Cross Section) 对比 ----
-# 绘制原始微分阶梯图
-ax2.step(edges[:-1], diff_cross_sections, where='post', color='crimson', linestyle='-', linewidth=2.5, label='原始输入微分截面 (不等宽 bin)')
-# 绘制重分 bin 后的微分阶梯图
-ax2.step(new_edges[:-1], new_diff_cross_sections, where='post', color='royalblue', linestyle='--', linewidth=2, label='重分 bin 后推导微分截面 (0.5 GeV bin)')
-
-# 绘制多项式插值得到的连续微分截面曲线（累积截面的导数）
-fine_energies = np.linspace(0.0, 6.0, 500)
-continuous_diff = cs.derivative()(fine_energies)
-# 确保连续微分截面非负
-continuous_diff = np.clip(continuous_diff, 0, None)
-ax2.plot(fine_energies, continuous_diff, color='purple', alpha=0.5, linestyle=':', label='多项式插值连续曲线')
-
-ax2.set_title('微分截面对比 (验证插值重构精度)', fontsize=14, fontweight='bold')
-ax2.set_xlabel('$E_e$ [GeV]', fontsize=12)
-ax2.set_ylabel(r'$\frac{\mathrm{d}\sigma}{\mathrm{d}E_e}$ [$10^{-39}$ $\mathrm{cm}^2/\mathrm{GeV}/\mathrm{nucleon}$]', fontsize=12)
-ax2.set_xlim(0, 6.0)
+# ---- (3) 积分结果：累积截面 F(E) ----
+ax2 = axes[1, 0]
+ax2.plot(uniform_edges, cumulative_F, color='darkgreen', lw=2.5, marker='.', ms=4,
+         label=r'累积积分 $F(E)=\int_0^E f\,\mathrm{d}E$')
+ax2.set_title('插值函数积分 (累积截面)', fontsize=12, fontweight='bold')
+ax2.set_xlabel(r'$E$ [GeV]')
+ax2.set_ylabel(r'$F(E)$ [$10^{-39}$ cm$^2$/nucleon]')
+ax2.set_xlim(E_MIN, E_MAX)
 ax2.set_ylim(bottom=0)
-ax2.grid(True, linestyle='--', alpha=0.6)
-ax2.legend(fontsize=10)
+ax2.grid(True, ls='--', alpha=0.5)
+ax2.legend()
 
+# ---- (4) 最终 60-bin：积分后的累积截面（单调递增）----
+ax3 = axes[1, 1]
+ax3.plot(uniform_edges[1:], final_array, 'o-', color='teal', lw=2, ms=4,
+         label=r'$F(E)$ @ 各 bin 右边界')
+ax3.step(uniform_edges[1:], final_array, where='pre', color='darkorange', lw=1.5,
+         ls='--', alpha=0.8, label='阶梯展示')
+ax3.set_title('最终 60-bin 积分结果 (单调递增)', fontsize=12, fontweight='bold')
+ax3.set_xlabel(r'$E$ [GeV]')
+ax3.set_ylabel(r'$F(E)$ [$10^{-39}$ cm$^2$/nucleon]')
+ax3.set_xlim(E_MIN, E_MAX)
+ax3.set_ylim(bottom=0)
+ax3.grid(True, ls='--', alpha=0.5)
+ax3.legend()
+
+fig.suptitle('阶梯函数 → 线性插值 → 积分 → 60-bin 累积截面', fontsize=14, fontweight='bold', y=1.01)
 plt.tight_layout()
 plt.show()
