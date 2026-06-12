@@ -250,7 +250,7 @@ def load_experiment():
     ])
 
     # ── Detector and beam parameters ────────────────────────────────────────
-    N_target   = 2.81e32
+    N_target   = 1.28e30 ##无严格证据
     L_km       = 0.541
     pot        = 6.46e20
     
@@ -641,7 +641,6 @@ def load_experiment():
         nue_flux=nue_flux * pot * N_target,
         nueb_flux=nueb_flux * pot * N_target,
     )
-"""改改改"""
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -701,9 +700,6 @@ def build_mixing_matrix(model, p):
 
     raise ValueError(f"Unknown model '{model}'. Choose '3', '3+1', '3+2', or '1+3+1'.")
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Part 3 · Event rate (spectrum) calculation
-# ═══════════════════════════════════════════════════════════════════════════
 def osc_prob(U, m2, alpha, beta, L, E_arr, anti=False):
 
     phase  = np.exp(-1j * 1.267 * m2[None, :] * L / E_arr[:, None])
@@ -711,55 +707,65 @@ def osc_prob(U, m2, alpha, beta, L, E_arr, anti=False):
     return np.abs(phase @ coeffs) ** 2
 """question 1+3+1 / 3+2"""
 
+# ═══════════════════════════════════════════════════════════════════════════
+# Part 3 · Event rate (spectrum) calculation
+# ═══════════════════════════════════════════════════════════════════════════
 
-def event_calculation(params, exp):
+def compute_spectrum(params, exp):
 
     U, m2 = build_mixing_matrix(MODEL, params)
     E, L  = exp['E_true'], exp['L_km']
 
     P_mu_e   = osc_prob(U, m2, 1, 0, L, E, anti=False)
-    P_mub_e  = osc_prob(U, m2, 1, 0, L, E, anti=True)
+    P_mub_eb  = osc_prob(U, m2, 1, 0, L, E, anti=True)
     P_e_e    = osc_prob(U, m2, 0, 0, L, E, anti=False)
-    P_eb_e   = osc_prob(U, m2, 0, 0, L, E, anti=True)
+    P_eb_eb   = osc_prob(U, m2, 0, 0, L, E, anti=True)
     P_e_mu   = osc_prob(U, m2, 0, 1, L, E, anti=False)
-    P_eb_mu  = osc_prob(U, m2, 0, 1, L, E, anti=True)
+    P_eb_mub  = osc_prob(U, m2, 0, 1, L, E, anti=True)
     P_mu_mu  = osc_prob(U, m2, 1, 1, L, E, anti=False)
-    P_mub_mu = osc_prob(U, m2, 1, 1, L, E, anti=True)
+    P_mub_mub = osc_prob(U, m2, 1, 1, L, E, anti=True)
 
-    signalnu_e  = exp['numu_flux'] * P_mu_e + exp['numu_fluxb'] * P_mub_e
-    signalnu_mu = exp['nue_flux'] * P_e_mu + exp['nue_fluxb'] * P_eb_mu
-    bkgnu_e = exp['nue_flux'] * P_e_e + exp['nue_fluxb'] * P_eb_e
-    bkgnu_mu = exp['numu_flux'] * P_mu_mu + exp['numu_fluxb'] * P_mub_mu
+    eff_efc  = exp['eff_efc']
+    eff_epc  = exp['eff_epc']
+    eff_mufc = exp['eff_mufc']
+    eff_mupc = exp['eff_mupc']
 
-    response_matrix_e = exp['response_matrix_e']
-    response_matrix_mu = exp['response_matrix_mu']
+    crosssection_e     = exp['crosssection_e']
+    crosssection_ebar  = exp['crosssection_ebar']
+    crosssection_mu    = exp['crosssection_mu']
+    crosssection_mubar = exp['crosssection_mubar']
 
-    efficiency_matrix_e = exp['efficiency_matrix_e']
-    efficiency_matrix_mu = exp['efficiency_matrix_mu']
+    eCC_FC_Energy_Resolution = exp['eCC_FC_Energy_Resolution'],
+    eCC_PC_Energy_Resolution = exp['eCC_PC_Energy_Resolution'],
+    muCC_FC_Energy_Resolution= exp['muCC_FC_Energy_Resolution'],
+    muCC_PC_Energy_Resolution= exp['muCC_PC_Energy_Resolution'],
 
-    event_signalnu_e  = response_matrix_e  @ efficiency_matrix_e  @ signalnu_e
-    event_signalnu_mu = response_matrix_mu @ efficiency_matrix_mu @ signalnu_mu
-    event_bkgnu_e     = response_matrix_e  @ efficiency_matrix_e  @ bkgnu_e
-    event_bkgnu_mu    = response_matrix_mu @ efficiency_matrix_mu @ bkgnu_mu
+    numu_flux  = exp['numu_flux'],
+    numub_flux = exp['numub_flux'],
+    nue_flux   = exp['nue_flux'],
+    nueb_flux  = exp['nueb_flux'],
 
-    return (
-        signalnu_e, signalnu_mu,
-        bkgnu_e, bkgnu_mu,
-        event_signalnu_e, event_signalnu_mu,
-        event_bkgnu_e,event_bkgnu_mu
-    )
+    totalsignalnu_e     = numu_flux * P_mu_e + nue_flux * P_e_e
+    totalsignalnu_ebar  = numub_flux * P_mub_eb + nueb_flux * P_eb_eb
+    totalsignalnu_mu    = nue_flux * P_e_mu + numu_flux * P_mu_mu
+    totalsignalnu_mubar = nueb_flux * P_eb_mub + numu_flux * P_mub_mub
+    
+    event_signalnu_efc  = eCC_FC_Energy_Resolution  @ eff_efc  @ (crosssection_e  @ totalsignalnu_e  + crosssection_ebar  @ totalsignalnu_ebar )
+    event_signalnu_epc  = eCC_PC_Energy_Resolution  @ eff_epc  @ (crosssection_e  @ totalsignalnu_e  + crosssection_ebar  @ totalsignalnu_ebar )
+    event_signalnu_mufc  = muCC_FC_Energy_Resolution @ eff_mufc @ (crosssection_mu @ totalsignalnu_mu + crosssection_mubar @ totalsignalnu_mubar)
+    event_signalnu_mupc  = muCC_PC_Energy_Resolution @ eff_mupc @ (crosssection_mu @ totalsignalnu_mu + crosssection_mubar @ totalsignalnu_mubar)
 
+###背景的组成成分 矩阵是否需要转置###############
 
-def compute_spectrum(params, exp):
-    (signalnu_e, signalnu_mu, bkgnu_e, bkgnu_mu,
-     event_signalnu_e, event_signalnu_mu,
-     event_bkgnu_e, event_bkgnu_mu) = event_calculation(params, exp)
+# 将四个数组放在一个列表中传入
+    signal = np.concatenate([
+    event_signalnu_efc,
+    event_signalnu_epc,
+    event_signalnu_mufc,
+    event_signalnu_mupc
+    ])
 
-    """合并bin"""
-    """合并bin"""
-    """合并bin"""
-
-    return events
+    return signal
 
 
 
