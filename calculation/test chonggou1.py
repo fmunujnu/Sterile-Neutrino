@@ -745,27 +745,46 @@ def compute_spectrum(params, exp):
     nue_flux   = exp['nue_flux'],
     nueb_flux  = exp['nueb_flux'],
 
-    totalsignalnu_e     = numu_flux * P_mu_e + nue_flux * P_e_e
-    totalsignalnu_ebar  = numub_flux * P_mub_eb + nueb_flux * P_eb_eb
-    totalsignalnu_mu    = nue_flux * P_e_mu + numu_flux * P_mu_mu
-    totalsignalnu_mubar = nueb_flux * P_eb_mub + numu_flux * P_mub_mub
-    
+    totalsignalnu_e     = numu_flux * P_mu_e
+    totalsignalnu_ebar  = numub_flux * P_mub_eb
+    totalsignalnu_mu    = nue_flux * P_e_mu 
+    totalsignalnu_mubar = nueb_flux * P_eb_mub
+    totalbkgnu_e        = nue_flux * P_e_e
+    totalbkgnu_ebar     = nueb_flux * P_eb_eb
+    totalbkgnu_mu       = numu_flux * P_mu_mu
+    totalbkgnu_mubar    = numu_flux * P_mub_mub
+
     event_signalnu_efc  = eCC_FC_Energy_Resolution  @ eff_efc  @ (crosssection_e  @ totalsignalnu_e  + crosssection_ebar  @ totalsignalnu_ebar )
     event_signalnu_epc  = eCC_PC_Energy_Resolution  @ eff_epc  @ (crosssection_e  @ totalsignalnu_e  + crosssection_ebar  @ totalsignalnu_ebar )
     event_signalnu_mufc  = muCC_FC_Energy_Resolution @ eff_mufc @ (crosssection_mu @ totalsignalnu_mu + crosssection_mubar @ totalsignalnu_mubar)
     event_signalnu_mupc  = muCC_PC_Energy_Resolution @ eff_mupc @ (crosssection_mu @ totalsignalnu_mu + crosssection_mubar @ totalsignalnu_mubar)
 
-###背景的组成成分 矩阵是否需要转置###############
+    event_bkgnu_efc  = eCC_FC_Energy_Resolution  @ eff_efc  @ (crosssection_e  @ totalbkgnu_e  + crosssection_ebar  @ totalbkgnu_ebar )
+    event_bkgnu_epc  = eCC_PC_Energy_Resolution  @ eff_epc  @ (crosssection_e  @ totalbkgnu_e  + crosssection_ebar  @ totalbkgnu_ebar )
+    event_bkgnu_mufc = muCC_FC_Energy_Resolution @ eff_mufc @ (crosssection_mu @ totalbkgnu_mu + crosssection_mubar @ totalbkgnu_mubar)
+    event_bkgnu_mupc = muCC_PC_Energy_Resolution @ eff_mupc @ (crosssection_mu @ totalbkgnu_mu + crosssection_mubar @ totalbkgnu_mubar)
 
-# 将四个数组放在一个列表中传入
-    signal = np.concatenate([
+    signal = np.hstack([
     event_signalnu_efc,
     event_signalnu_epc,
     event_signalnu_mufc,
     event_signalnu_mupc
     ])
 
-    return signal
+    bkg = np.hstack([
+    event_bkgnu_efc,
+    event_bkgnu_epc,
+    event_bkgnu_mufc,
+    event_bkgnu_mupc
+    ])
+
+###背景的组成成分 矩阵是否需要转置###############
+
+    return (
+        signal,
+        bkg
+    )
+
 
 
 
@@ -810,11 +829,6 @@ def _abs_cov_inv(frac_cov, mu):
 
 def chi2_value(params, exp):
     """Chi-squared for params relative to MiniBooNE data."""
-
-    """卡方计算核心"""
-    """卡方计算核心"""
-    """卡方计算核心"""
-
 
     mu    = np.maximum(compute_spectrum(params, exp) + exp['background'], 1e-12)
     inv_c = _abs_cov_inv(exp['covariance'], mu)
