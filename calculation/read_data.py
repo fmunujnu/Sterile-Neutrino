@@ -136,7 +136,7 @@ if __name__ == "__main__":
     print("Bkg first 5:", bkg[:104])
     print("Sig+Bkg first 5:", sigbkg[:104])
 
-    N = 104
+    N = 26*2
     data = data[:N]
     bkg = bkg[:N]
     sigbkg = sigbkg[:N]

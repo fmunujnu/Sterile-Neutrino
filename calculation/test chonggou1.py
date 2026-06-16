@@ -4,6 +4,7 @@ from scipy.stats import chi2 as chi2_dist
 import matplotlib as mpl, matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 import read_data as rd
+import os
 
 mpl.rcParams.update({
     'font.family': 'sans-serif',
@@ -37,12 +38,11 @@ PARAM_NAMES = [
 _z = dict(init=0., lo=0., hi=0., sc='linear')   # 复制了一份 _z 字典，从而快速将它们全部设为固定零值
 PARAM_CFG = {
     'dm41'   : dict(init=0.87, lo=0.01, hi=100.,sc='log'),
-    'dm51'   : dict(init=0.47, lo=0.01, hi=100.,sc='log'),
     'theta14': dict(init=0.15, lo=1e-4, hi=1.0, sc='log'),
-    'theta15': dict(init=0.13, lo=1e-4, hi=1.0, sc='log'),
     'theta24': dict(init=0.13, lo=1e-4, hi=1.0, sc='log'),
-    'theta25': dict(init=0.17, lo=1e-4, hi=1.0, sc='log'),
-    **{k: dict(**_z) for k in ['theta34','theta35','theta45',
+    **{k: dict(**_z) for k in ['dm51',
+                                'theta15','theta25',
+                                'theta34','theta35','theta45',
                                 'delta14','delta15','delta24','delta25',
                                 'delta34','delta35','delta45']},
 }
@@ -55,33 +55,8 @@ def _couple_mode1(p, v1, v2):
     p['theta15'] = p['theta25'] = float(np.clip(np.sqrt(max(v2, 0.)), 0., 1.))
 
 def _couple_mode3(p, v1, v2):
-    ##########本段令14/24相等 没有考虑5
-    """
-    禁止小角近似，严格求解: v1 = 4 * sin⁴θ * (1 - sin²θ)
-    满足条件: theta14 = theta24 = theta
-    """
-    # 1. 定义三次方程的系数: 4x³ - 4x² + 0x + v1 = 0
-    # 注意：我们找的是 x = sin²θ
-    coeffs = [4.0, -4.0, 0.0, float(v1)]
-    
-    # 2. 求根
-    roots = np.roots(coeffs)
-    
-    # 3. 筛选物理合理的根
-    # 物理上 sin²θ 必须是实数，且在 [0, 1] 之间。
-    # 对于该特定方程，在 v1 较小时，通常有一个极小的正实根。
-    real_roots = roots[np.isreal(roots)].real
-    valid_roots = real_roots[(real_roots >= 0) & (real_roots <= 1)]
-    
-    if len(valid_roots) > 0:
-        # 取最小的正根（对应物理上的小混合角分支）
-        st2 = np.min(valid_roots)
-    else:
-        # 如果 v1 超出物理极限 (16/27)，则做截断处理
-
-        print(f"error: couple_mode3_perfect_strict")
-
-    # 4. 赋值
+    """sin²2θ_eff scan: v1 = sin²2θ_eff = 4*sin²θ14*sin²θ24, 令 theta14=theta24."""
+    st2 = float(np.clip(v1 / 4.0, 0., 1.))
     st = float(np.arcsin(np.sqrt(st2)))
     p['theta14'] = p['theta24'] = st
     p['dm41'] = float(v2)
@@ -99,7 +74,7 @@ SCAN_TASKS = [
         xlabel=r'$\sin\theta_{14}\cdot\sin\theta_{24}$',
         ylabel=r'$\sin\theta_{15}\cdot\sin\theta_{25}$',
         title =r'$\sin\theta_{14}\sin\theta_{24}$ vs $\sin\theta_{15}\sin\theta_{25}$',
-        xscale='log', yscale='log', savepath='miniboone_mode1.png',
+        xscale='log', yscale='log', savepath='microboone_mode1.png',
         extra_fixed=dict(dm41=0.87, dm51=0.47),
         couple=_couple_mode1,
         param_roles={**_zero_roles, 'dm41':'fixed_init', 'dm51':'fixed_init'},
@@ -113,7 +88,7 @@ SCAN_TASKS = [
         xlabel=r'$|\Delta m^2_{41}|\ \rm[eV^2]$',
         ylabel=r'$|\Delta m^2_{51}|\ \rm[eV^2]$',
         title =r'$|\Delta m^2_{41}|$ vs $|\Delta m^2_{51}|$',
-        xscale='log', yscale='log', savepath='miniboone_mode2.png',
+        xscale='log', yscale='log', savepath='microboone_mode2.png',
         extra_fixed=dict(theta14=0.15, theta24=0.13, theta15=0.13, theta25=0.17),
         couple=None,
         param_roles={**_zero_roles,
@@ -127,7 +102,7 @@ SCAN_TASKS = [
         xlabel=r'$\sin^2(2\theta_{\mu e}^{\rm eff})$',
         ylabel=r'$|\Delta m^2_{41}|\ \rm[eV^2]$',
         title =r'$\sin^2(2\theta_{\mu e}^{\rm eff})$ vs $|\Delta m^2_{41}|$',
-        xscale='log', yscale='log', savepath='miniboone_mode3.png',
+        xscale='log', yscale='log', savepath='microboone_mode3.png',
         extra_fixed=dict(dm51=0.47, theta15=0.13, theta25=0.17),
         couple=_couple_mode3,
         param_roles={**_zero_roles,
@@ -143,7 +118,7 @@ SCAN_TASKS = [
 
 def load_experiment():
     """
-    Hard-code and return all MiniBooNE detector/beam quantities in a dict.
+    Hard-code and return all MicroBooNE detector/beam quantities in a dict.
 
     Keys
     ----
@@ -234,12 +209,11 @@ def load_experiment():
 
 
     # ── Observed energy bins (GeV) ──────────────────────────────────────────
-    obs_Elo = np.array([475.,550.,675.,800.,950.,1100.,1300.,1500.]) / 1000.
-    obs_Ehi = np.array([550.,675.,800.,950.,1100.,1300.,1500.,3000.]) / 1000.
+    obs_Elo = np.linspace(0., 2.5, 26)
+    obs_Ehi = np.append(np.linspace(0.1, 2.5, 25), 3.0)
     obs_centers = (obs_Elo + obs_Ehi) / 2.
 
-    observed   = rd.read_three_spectra(r"E:\Sterile Neutrino\sterile neutrino data\HEPData-ins3088922-v1-Unconstrained_14_channels.csv")
-    background = rd.read_three_spectra(r"E:\Sterile Neutrino\sterile neutrino data\HEPData-ins3088922-v1-Unconstrained_14_channels.csv")
+    observed, background, _ = rd.read_three_spectra(r"E:\Sterile Neutrino\sterile neutrino data\HEPData-ins3088922-v1-Unconstrained_14_channels.csv")
 
     covariance = rd.read_covariance_matrix(r"E:\Sterile Neutrino\sterile neutrino data\HEPData-ins3088922-v1-14_channel_covariance_matrix.csv")
 
@@ -248,7 +222,7 @@ def load_experiment():
     covariance = covariance[:104, :104]
 
     # ── Detector and beam parameters ────────────────────────────────────────
-    N_target   = 1.28e30 ##无严格证据
+    N_target   = 1.28e30 * 40 ##无严格证据
     L_km       = 0.541
     pot        = 6.46e20
     
@@ -610,6 +584,12 @@ def load_experiment():
         [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.00011001280887283669, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0012213118796997678, 0.0, 0.0011321512699325083, 0.0, 0.0, 0.0016894905045369392, 0.0, 0.0, 0.0, 0.0, 0.0019442961651278726, 0.0, 0.0, 0.0044483943633726675, 0.0]
     ])
 
+    # ── Rebin matrix: 60 true energy bins → 26 observed energy bins ──────
+    R_rebin = np.zeros((60, 26))
+    for j in range(25):
+        R_rebin[2*j:2*j+2, j] = 1.0
+    R_rebin[50:60, 25] = 1.0
+
     return dict(
         E_true=E_centers[:60], L_km=L_km,
         Elo=obs_Elo,
@@ -624,15 +604,16 @@ def load_experiment():
         eff_mufc = eff_mufc,
         eff_mupc = eff_mupc,
 
-        crosssection_e     = crosssection_e,
-        crosssection_ebar  = crosssection_ebar,
-        crosssection_mu    = crosssection_mu,
-        crosssection_mubar = crosssection_mubar,
+        crosssection_e     = 1e-38 * crosssection_e,
+        crosssection_ebar  = 1e-38 * crosssection_ebar,
+        crosssection_mu    = 1e-38 * crosssection_mu,
+        crosssection_mubar = 1e-38 * crosssection_mubar,
 
         eCC_FC_Energy_Resolution = eCC_FC_Energy_Resolution,
         eCC_PC_Energy_Resolution = eCC_PC_Energy_Resolution,
         muCC_FC_Energy_Resolution= muCC_FC_Energy_Resolution,
         muCC_PC_Energy_Resolution= muCC_PC_Energy_Resolution,
+        R_rebin=R_rebin,
 ########################################################################
         numu_flux=numu_flux * pot * N_target,
         numub_flux=numub_flux * pot * N_target,
@@ -737,6 +718,7 @@ def compute_spectrum(params, exp):
     eCC_PC_Energy_Resolution = exp['eCC_PC_Energy_Resolution']
     muCC_FC_Energy_Resolution= exp['muCC_FC_Energy_Resolution']
     muCC_PC_Energy_Resolution= exp['muCC_PC_Energy_Resolution']
+    R_rebin = exp['R_rebin']
 
     numu_flux  = exp['numu_flux']
     numub_flux = exp['numub_flux']
@@ -750,7 +732,7 @@ def compute_spectrum(params, exp):
     totalbkgnu_e        = nue_flux  * P_e_e
     totalbkgnu_ebar     = nueb_flux * P_eb_eb
     totalbkgnu_mu       = numu_flux * P_mu_mu
-    totalbkgnu_mubar    = numu_flux * P_mub_mub
+    totalbkgnu_mubar    = numub_flux * P_mub_mub
 
     event_signalnu_efc  = eCC_FC_Energy_Resolution  @ eff_efc  @ (crosssection_e  @ totalsignalnu_e  + crosssection_ebar  @ totalsignalnu_ebar )
     event_signalnu_epc  = eCC_PC_Energy_Resolution  @ eff_epc  @ (crosssection_e  @ totalsignalnu_e  + crosssection_ebar  @ totalsignalnu_ebar )
@@ -769,17 +751,17 @@ def compute_spectrum(params, exp):
 
 
     signal = np.hstack([
-    event_signalnu_efc,
-    event_signalnu_epc,
-    event_signalnu_mufc,
-    event_signalnu_mupc
+    event_signalnu_efc  @ R_rebin,
+    event_signalnu_epc  @ R_rebin,
+    event_signalnu_mufc @ R_rebin,
+    event_signalnu_mupc @ R_rebin
     ])
 
     bkg = np.hstack([
-    event_bkgnu_efc,
-    event_bkgnu_epc,
-    event_bkgnu_mufc,
-    event_bkgnu_mupc
+    event_bkgnu_efc  @ R_rebin,
+    event_bkgnu_epc  @ R_rebin,
+    event_bkgnu_mufc @ R_rebin,
+    event_bkgnu_mupc @ R_rebin
     ])
 
 ###背景的组成成分 矩阵是否需要转置###############
@@ -824,26 +806,30 @@ def _get_bounds():
 
 # ── Covariance helpers ────────────────────────────────────────────────────────
 
-def _abs_cov_inv(frac_cov, mu):
-    """Absolute cov = frac_cov × outer(μ,μ), regularised and inverted."""
-    C = frac_cov * np.outer(mu, mu)
-    C += 1e-8 * np.trace(C) / C.shape[0] * np.eye(C.shape[0])
+def _abs_cov_inv(cov):
+    """Invert absolute covariance matrix with regularisation."""
+    C = cov + 1e-8 * np.trace(cov) / cov.shape[0] * np.eye(cov.shape[0])
     try:    return np.linalg.inv(C)
     except: return np.linalg.pinv(C)
 
 def chi2_value(params, exp):
-    """Chi-squared for params relative to MiniBooNE data."""
+    """Chi-squared for params relative to MicroBooNE data."""
     sig, _ = compute_spectrum(params, exp)
     mu    = np.maximum(sig + exp['background'], 1e-12)
-    inv_c = _abs_cov_inv(exp['covariance'], mu)
+    inv_c = _abs_cov_inv(exp['covariance'])
     d     = exp['observed'] - mu
     return float(d @ inv_c @ d)
 
 def chi2_null(exp):
     """Chi-squared for the background-only (no oscillation) hypothesis."""
-    bkg   = exp['background']
-    inv_c = _abs_cov_inv(exp['covariance'], bkg)
-    d     = exp['observed'] - bkg
+    null_params = {nm: PARAM_CFG[nm]['init'] for nm in PARAM_NAMES}
+    for nm in PARAM_NAMES:
+        if nm.startswith('theta'):
+            null_params[nm] = 0.0
+    sig_null, _ = compute_spectrum(null_params, exp)
+    mu    = sig_null + exp['background']
+    inv_c = _abs_cov_inv(exp['covariance'])
+    d     = exp['observed'] - mu
     return float(d @ inv_c @ d)
 
 
@@ -882,7 +868,12 @@ def global_minimize(exp, n_random=50, seed=42):
             c2  = 2. * res.fun
             if c2 < best_c2:
                 best_c2, best_x = c2, res.x.copy()
-        except Exception: continue
+        except Exception as e:
+            import sys; print(f"[warn] optimiser start failed: {type(e).__name__}: {e}", file=sys.stderr)
+            continue
+
+    if best_x is None:
+        raise RuntimeError("All optimisation starts failed — no valid best-fit found.")
 
     # Final fine refinement
     try:
@@ -1055,70 +1046,62 @@ def ts_at_projection(grid1, grid2, chi2_grid, chi2_ref, proj_xy,
 # ═══════════════════════════════════════════════════════════════════════════
 
 def plot_spectrum(exp, best_params, savepath=None):
-    """
-    绘制能谱图：
-    1. 使用相对协方差矩阵计算绝对误差，并应用到观测数据的误差棒上。
-    2. 移除了预估数据的颜色填充阴影。
-    """
-    bkg   = exp['background']
+    CHANNELS = 4
+    NBINS = 26
+    CH_NAMES = ['eCC FC', 'eCC PC', r'$\mu$CC FC', r'$\mu$CC PC']
+
+    bkg   = exp['background'].reshape(CHANNELS, NBINS)
     sig, _   = compute_spectrum(best_params, exp)
-    total = bkg + sig  # 理论预测值 N_i
-    data  = exp['observed']
+    sig   = sig.reshape(CHANNELS, NBINS)
+    total = bkg + sig
+    data  = exp['observed'].reshape(CHANNELS, NBINS)
     E     = exp['obs_centers']
-    xerr  = [E - exp['Elo'], exp['Ehi'] - E]
+    Elo   = exp['Elo']
+    Ehi   = exp['Ehi']
+    xerr  = [E - Elo, Ehi - E]
 
-    # ── 核心逻辑：从相对协方差计算绝对误差 (sigma_i) ────────────────────────
-    
-    frac_cov = exp['covariance']
-    # 计算绝对误差 sigma_i = sqrt(相对方差_ii) * 预测值_i
-    # np.diag(frac_cov) 提取对角线上的相对方差
-    total_err = np.sqrt(np.diag(frac_cov)) * total
-    
-    # 准备阶梯图数据 (用于预测线)
-    E_step = np.append(exp['Elo'], exp['Ehi'][-1])
-    T_step = np.append(total, total[-1])
-    B_step = np.append(bkg, bkg[-1])
+    frac_diag = np.diag(exp['covariance']).reshape(CHANNELS, NBINS)
+    total_err = np.sqrt(np.maximum(frac_diag, 0.)).reshape(CHANNELS, NBINS)
 
-    fig, ax = plt.subplots(figsize=(10, 6))
+    E_step = np.append(Elo, Ehi[-1])
 
-    # 1. 绘制背景线 (虚线)
-    ax.step(E_step, B_step, where='post',
-            color='steelblue', ls='--', lw=1.6, label='Background only')
-    
-    # 2. 绘制总预测线 (实线)
-    ax.step(E_step, T_step, where='post',
-            color='steelblue', ls='-', lw=2., label='Bkg + prediction (signal)')
+    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+    axes = axes.flat
+    for c in range(CHANNELS):
+        ax = axes[c]
+        T_step = np.append(total[c], total[c][-1])
+        B_step = np.append(bkg[c], bkg[c][-1])
 
-    # 【此处已完全删去 ax.fill_between 颜色填充代码】
+        ax.step(E_step, B_step, where='post',
+                color='steelblue', ls='--', lw=1.6, label='Background only')
+        ax.step(E_step, T_step, where='post',
+                color='steelblue', ls='-', lw=2., label='Bkg + prediction')
 
-    # 3. 绘制观测数据点 (使用计算出的真实误差 total_err)
-    ax.errorbar(E, data, 
-                yerr=total_err,           # <--- 关键修改：使用协方差导出的真实误差
-                xerr=xerr, 
-                fmt='o', 
-                color='crimson', 
-                ms=7, 
-                capsize=4, 
-                elinewidth=1.5,
-                markeredgewidth=1.2, 
-                label='Observed data (w/ Covariance Error)')
+        ax.errorbar(E, data[c],
+                    yerr=total_err[c],
+                    xerr=xerr,
+                    fmt='o',
+                    color='crimson',
+                    ms=5,
+                    capsize=3,
+                    elinewidth=1.2,
+                    markeredgewidth=0.8,
+                    label='Observed')
 
-    # ── 图形修饰 ────────────────────────────────────────────────────────────
-    ax.set_xlabel(r'Reconstructed $E_\nu^{\rm QE}\ \rm [GeV]$', fontsize=13)
-    ax.set_ylabel('Event count', fontsize=13)
-    ax.set_title(f'MicroBooNE — Prediction vs Data', fontsize=12)
-    
-    ax.legend(fontsize=11, loc='upper right', framealpha=0.85)
-    ax.tick_params(which='both', direction='in', top=True, right=True, labelsize=11)
-    ax.grid(True, ls='--', alpha=0.3)
-    ax.set_xlim(exp['Elo'][0]*0.98, exp['Ehi'][-1]*1.02)
-    ax.set_ylim(bottom=0.)
-    
+        ax.set_xlabel(r'Reconstructed $E_\nu^{\rm QE}\ \rm [GeV]$', fontsize=11)
+        ax.set_ylabel('Event count', fontsize=11)
+        ax.set_title(f'MicroBooNE — {CH_NAMES[c]}', fontsize=11)
+        ax.legend(fontsize=9, loc='upper right', framealpha=0.85)
+        ax.tick_params(which='both', direction='in', top=True, right=True, labelsize=9)
+        ax.grid(True, ls='--', alpha=0.3)
+        ax.set_xlim(Elo[0]*0.98, Ehi[-1]*1.02)
+        ax.set_ylim(bottom=0.)
+
+    fig.suptitle('MicroBooNE — Prediction vs Data', fontsize=13, y=1.01)
     fig.tight_layout()
     if savepath: fig.savefig(savepath, dpi=150, bbox_inches='tight')
     plt.show()
-    
-    return fig, ax
+    return fig, axes
 
 
 def plot_contour(grid1, grid2, TS_grid, xlabel, ylabel, title,
@@ -1201,8 +1184,8 @@ def plot_contour(grid1, grid2, TS_grid, xlabel, ylabel, title,
         ax.set_xlabel(xlabel, fontsize=14); ax.set_ylabel(ylabel, fontsize=14)
         ax.tick_params(which='both', direction='in', top=True, right=True, labelsize=12)
         ax.grid(True, which='both', ls='--', alpha=0.25)
-    ax1.set_title(f"MiniBooNE {MODEL} — {title}  " + r"$\Delta\chi^2$ map", fontsize=12, pad=8)
-    ax2.set_title(f"MiniBooNE {MODEL} — {title}  Allowed regions",           fontsize=12, pad=8)
+    ax1.set_title(f"MicroBooNE {MODEL} — {title}  " + r"$\Delta\chi^2$ map", fontsize=12, pad=8)
+    ax2.set_title(f"MicroBooNE {MODEL} — {title}  Allowed regions",           fontsize=12, pad=8)
 
     if savepath: fig.savefig(savepath, dpi=150, bbox_inches='tight')
     plt.show()
@@ -1212,6 +1195,10 @@ def plot_contour(grid1, grid2, TS_grid, xlabel, ylabel, title,
 # ═══════════════════════════════════════════════════════════════════════════
 
 def main():
+    # ── Output folder ────────────────────────────────────────────────────────
+    outdir = os.path.join(os.path.dirname(__file__), 'output')
+    os.makedirs(outdir, exist_ok=True)
+
     # ── Load data ────────────────────────────────────────────────────────────
     exp = load_experiment()
 
@@ -1233,7 +1220,10 @@ def main():
         for nm in ['theta14','theta24','theta15','theta25','dm41','dm51']:
             print(f"    {nm:12s} = {best_params.get(nm, 0.):.6g}")
 
-        plot_spectrum(exp, best_params, savepath='miniboone_spectrum_bestfit.png')
+        try:
+            plot_spectrum(exp, best_params, savepath=os.path.join(outdir, 'microboone_spectrum_bestfit.png'))
+        except Exception as e:
+            import sys; print(f"[warn] plot_spectrum failed: {type(e).__name__}: {e}", file=sys.stderr)
 
     # ── 2D parameter scans ───────────────────────────────────────────────────
     print(f"\nScan method: {SCAN_MODE.upper()}")
@@ -1270,13 +1260,14 @@ def main():
             ts_gb = ts_at_projection(task['grid1'], task['grid2'], chi2_grid, chi2_ref,
                                      global_xy, task['xscale'], task['yscale'])
 
+        savepath = os.path.join(outdir, task.get('savepath')) if task.get('savepath') else None
         plot_contour(
             task['grid1'], task['grid2'], TS_grid,
             task['xlabel'], task['ylabel'], task['title'],
             task['xscale'], task['yscale'],
             best_xy=best_xy, global_best_xy=global_xy, ts_at_global=ts_gb,
             chi2_null_val=c2_null, chi2_scan_min=c2_min, chi2_global_min=c2_global,
-            savepath=task.get('savepath'),
+            savepath=savepath,
         )
 
 
