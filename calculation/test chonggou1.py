@@ -3,6 +3,7 @@ from scipy.optimize import minimize
 from scipy.stats import chi2 as chi2_dist
 import matplotlib as mpl, matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
+import read_data as rd
 
 mpl.rcParams.update({
     'font.family': 'sans-serif',
@@ -53,7 +54,7 @@ def _couple_mode1(p, v1, v2):
     p['theta14'] = p['theta24'] = float(np.clip(np.sqrt(max(v1, 0.)), 0., 1.))
     p['theta15'] = p['theta25'] = float(np.clip(np.sqrt(max(v2, 0.)), 0., 1.))
 
-def _couple_mode3_perfect_strict(p, v1, v2):
+def _couple_mode3(p, v1, v2):
     ##########本段令14/24相等 没有考虑5
     """
     禁止小角近似，严格求解: v1 = 4 * sin⁴θ * (1 - sin²θ)
@@ -230,24 +231,21 @@ def load_experiment():
     nue_flux   = nue_flux[:60]
     nueb_flux  = nueb_flux[:60]
 
+
+
     # ── Observed energy bins (GeV) ──────────────────────────────────────────
     obs_Elo = np.array([475.,550.,675.,800.,950.,1100.,1300.,1500.]) / 1000.
     obs_Ehi = np.array([550.,675.,800.,950.,1100.,1300.,1500.,3000.]) / 1000.
     obs_centers = (obs_Elo + obs_Ehi) / 2.
 
-    observed   = np.array([83., 90., 63., 58., 49., 45., 35., 67.])
-    background = np.array([70.91, 81.51, 61.94, 58.95, 50.01, 44.49, 33.73, 65.27])
+    observed   = rd.read_three_spectra(r"E:\Sterile Neutrino\sterile neutrino data\HEPData-ins3088922-v1-Unconstrained_14_channels.csv")
+    background = rd.read_three_spectra(r"E:\Sterile Neutrino\sterile neutrino data\HEPData-ins3088922-v1-Unconstrained_14_channels.csv")
 
-    covariance = np.array([
-        [ 0.022008,  0.0012446, 0.0048977, 0.0034062, 0.0044717,-0.0028033, 0.00040001,0.0020426],
-        [ 0.0012446, 0.02618,   0.0012558, 0.0050882, 0.00094575,0.0076589, 0.0036528, 0.011599 ],
-        [ 0.0048977, 0.0012558, 0.026245,  0.013242,  0.015989,  0.013736,  0.018327,  0.016744 ],
-        [ 0.0034062, 0.0050882, 0.013242,  0.034777,  0.023469,  0.024032,  0.033912,  0.026725 ],
-        [ 0.0044717, 0.00094575,0.015989,  0.023469,  0.052856,  0.032156,  0.05459,   0.028499 ],
-        [-0.0028033, 0.0076589, 0.013736,  0.024032,  0.032156,  0.082711,  0.069783,  0.050257 ],
-        [ 0.00040001,0.0036528, 0.018327,  0.033912,  0.05459,   0.069783,  0.12506,   0.053062 ],
-        [ 0.0020426, 0.011599,  0.016744,  0.026725,  0.028499,  0.050257,  0.053062,  0.064412 ],
-    ])
+    covariance = rd.read_covariance_matrix(r"E:\Sterile Neutrino\sterile neutrino data\HEPData-ins3088922-v1-14_channel_covariance_matrix.csv")
+
+    observed = observed[:104]
+    background = background[:104]
+    covariance = covariance[:104, :104]
 
     # ── Detector and beam parameters ────────────────────────────────────────
     N_target   = 1.28e30 ##无严格证据
@@ -613,7 +611,7 @@ def load_experiment():
     ])
 
     return dict(
-        E_true=E_centers, L_km=L_km,
+        E_true=E_centers[:60], L_km=L_km,
         Elo=obs_Elo,
         Ehi=obs_Ehi,
         obs_centers=obs_centers,
@@ -735,21 +733,21 @@ def compute_spectrum(params, exp):
     crosssection_mu    = exp['crosssection_mu']
     crosssection_mubar = exp['crosssection_mubar']
 
-    eCC_FC_Energy_Resolution = exp['eCC_FC_Energy_Resolution'],
-    eCC_PC_Energy_Resolution = exp['eCC_PC_Energy_Resolution'],
-    muCC_FC_Energy_Resolution= exp['muCC_FC_Energy_Resolution'],
-    muCC_PC_Energy_Resolution= exp['muCC_PC_Energy_Resolution'],
+    eCC_FC_Energy_Resolution = exp['eCC_FC_Energy_Resolution']
+    eCC_PC_Energy_Resolution = exp['eCC_PC_Energy_Resolution']
+    muCC_FC_Energy_Resolution= exp['muCC_FC_Energy_Resolution']
+    muCC_PC_Energy_Resolution= exp['muCC_PC_Energy_Resolution']
 
-    numu_flux  = exp['numu_flux'],
-    numub_flux = exp['numub_flux'],
-    nue_flux   = exp['nue_flux'],
-    nueb_flux  = exp['nueb_flux'],
+    numu_flux  = exp['numu_flux']
+    numub_flux = exp['numub_flux']
+    nue_flux   = exp['nue_flux']
+    nueb_flux  = exp['nueb_flux']
 
     totalsignalnu_e     = numu_flux * P_mu_e
-    totalsignalnu_ebar  = numub_flux * P_mub_eb
-    totalsignalnu_mu    = nue_flux * P_e_mu 
+    totalsignalnu_ebar  = numub_flux* P_mub_eb
+    totalsignalnu_mu    = nue_flux  * P_e_mu 
     totalsignalnu_mubar = nueb_flux * P_eb_mub
-    totalbkgnu_e        = nue_flux * P_e_e
+    totalbkgnu_e        = nue_flux  * P_e_e
     totalbkgnu_ebar     = nueb_flux * P_eb_eb
     totalbkgnu_mu       = numu_flux * P_mu_mu
     totalbkgnu_mubar    = numu_flux * P_mub_mub
@@ -763,6 +761,12 @@ def compute_spectrum(params, exp):
     event_bkgnu_epc  = eCC_PC_Energy_Resolution  @ eff_epc  @ (crosssection_e  @ totalbkgnu_e  + crosssection_ebar  @ totalbkgnu_ebar )
     event_bkgnu_mufc = muCC_FC_Energy_Resolution @ eff_mufc @ (crosssection_mu @ totalbkgnu_mu + crosssection_mubar @ totalbkgnu_mubar)
     event_bkgnu_mupc = muCC_PC_Energy_Resolution @ eff_mupc @ (crosssection_mu @ totalbkgnu_mu + crosssection_mubar @ totalbkgnu_mubar)
+
+    event_signalnu_efc  = event_signalnu_efc  + event_bkgnu_efc
+    event_signalnu_epc  = event_signalnu_epc  + event_bkgnu_epc
+    event_signalnu_mufc = event_signalnu_mufc + event_bkgnu_mufc
+    event_signalnu_mupc = event_signalnu_mupc + event_bkgnu_mupc
+
 
     signal = np.hstack([
     event_signalnu_efc,
@@ -829,8 +833,8 @@ def _abs_cov_inv(frac_cov, mu):
 
 def chi2_value(params, exp):
     """Chi-squared for params relative to MiniBooNE data."""
-
-    mu    = np.maximum(compute_spectrum(params, exp) + exp['background'], 1e-12)
+    sig, _ = compute_spectrum(params, exp)
+    mu    = np.maximum(sig + exp['background'], 1e-12)
     inv_c = _abs_cov_inv(exp['covariance'], mu)
     d     = exp['observed'] - mu
     return float(d @ inv_c @ d)
@@ -920,21 +924,102 @@ def scan_fixed_2d(ax1, grid1, ax2, grid2, exp,
             (float(grid1[idx[0]]), float(grid2[idx[1]])),
             chi2_min, param_store[idx[0]][idx[1]])
 
-
-
-
-
-
-
-
-
-
-
-
 ### profile
 
 
+# ── Profile likelihood helpers ────────────────────────────────────────────────
 
+def _build_fixed_dict(ax1, ax2, v1, v2, param_roles, couple):
+    """
+    Construct the dict of all non-free parameters for one (v1,v2) grid point.
+    Virtual axes (names starting with '_') are handled by the couple function.
+    """
+    # Start with scan-axis values (couple may overwrite via virtual names)
+    scan_dict = {ax1: float(v1), ax2: float(v2)}
+    if couple: couple(scan_dict, v1, v2)
+
+    fixed = {}
+    for nm in PARAM_NAMES:
+        if nm in scan_dict:
+            fixed[nm] = float(scan_dict[nm])   # set by direct axis or couple
+            continue
+        role = param_roles.get(nm, 'fixed_init')
+        if   role == 'free':       pass                              # will be optimised
+        elif role == 'fixed_init': fixed[nm] = PARAM_CFG[nm]['init']
+        else:                      fixed[nm] = float(role)          # numeric constant
+    return fixed
+
+def _minimize_free(fixed, free_nms, free_bds, exp, global_best_p=None, seed=0):
+    """
+    Minimise chi2 over free_nms, with all other params held in fixed.
+
+    Returns (best_param_dict, chi2_min).
+    """
+    rng = np.random.default_rng(seed)
+
+    def obj(free_x):
+        p = dict(fixed)
+        for k, nm in enumerate(free_nms):
+            p[nm] = _from_opt(free_x[k], nm)
+        return chi2_value(p, exp) / 2.
+
+    x0_free = np.array([np.clip(_to_opt(PARAM_CFG[nm]['init'], nm), lo, hi)
+                        for nm, (lo, hi) in zip(free_nms, free_bds)])
+    starts = [x0_free]
+    if global_best_p is not None:
+        gx = np.array([np.clip(_to_opt(global_best_p.get(nm, PARAM_CFG[nm]['init']), nm), lo, hi)
+                       for nm, (lo, hi) in zip(free_nms, free_bds)])
+        starts.insert(0, gx)
+    for _ in range(5):
+        starts.append(np.clip(x0_free + rng.normal(0., 0.3, x0_free.shape),
+                               [lo for lo,_ in free_bds], [hi for _,hi in free_bds]))
+    for _ in range(5):
+        starts.append(np.array([rng.uniform(lo, hi) for lo, hi in free_bds]))
+
+    opt = dict(method='L-BFGS-B', bounds=free_bds,
+               options={'maxiter':2000,'ftol':1e-10,'gtol':1e-9})
+    best_fun, best_x = np.inf, starts[0]
+    for xs in starts:
+        try:
+            res = minimize(obj, xs, **opt)
+            if res.fun < best_fun:
+                best_fun, best_x = res.fun, res.x.copy()
+        except Exception: continue
+    try:
+        res2 = minimize(obj, best_x, method='L-BFGS-B', bounds=free_bds,
+                        options={'maxiter':5000,'ftol':1e-14,'gtol':1e-12})
+        if res2.fun < best_fun:
+            best_fun, best_x = res2.fun, res2.x.copy()
+    except Exception: pass
+
+    best_p = dict(fixed)
+    for k, nm in enumerate(free_nms):
+        best_p[nm] = _from_opt(best_x[k], nm)
+    return best_p, float(2. * best_fun)
+
+
+
+# ── TS at global best projection ──────────────────────────────────────────────
+
+def ts_at_projection(grid1, grid2, chi2_grid, chi2_ref, proj_xy,
+                     xscale='log', yscale='log'):
+    """Return ΔTS at the grid cell closest to proj_xy."""
+    px, py = proj_xy
+    if not (px and py and np.isfinite(px) and np.isfinite(py) and px > 0 and py > 0):
+        return np.inf
+    tol = 1.05
+    for val, g, sc in [(px, grid1, xscale), (py, grid2, yscale)]:
+        rng = g[-1] - g[0]
+        if sc == 'log':
+            if val < g[0]/tol or val > g[-1]*tol: return np.inf
+        else:
+            if val < g[0]-0.05*rng or val > g[-1]+0.05*rng: return np.inf
+    di = (int(np.argmin(np.abs(np.log10(grid1)-np.log10(px))))
+          if xscale == 'log' else int(np.argmin(np.abs(grid1-px))))
+    dj = (int(np.argmin(np.abs(np.log10(grid2)-np.log10(py))))
+          if yscale == 'log' else int(np.argmin(np.abs(grid2-py))))
+    c2 = chi2_grid[di, dj]
+    return np.inf if np.isnan(c2) else float(max(0., c2 - chi2_ref))
 
 
 
@@ -976,7 +1061,7 @@ def plot_spectrum(exp, best_params, savepath=None):
     2. 移除了预估数据的颜色填充阴影。
     """
     bkg   = exp['background']
-    sig   = compute_spectrum(best_params, exp)
+    sig, _   = compute_spectrum(best_params, exp)
     total = bkg + sig  # 理论预测值 N_i
     data  = exp['observed']
     E     = exp['obs_centers']
@@ -1122,5 +1207,79 @@ def plot_contour(grid1, grid2, TS_grid, xlabel, ylabel, title,
     if savepath: fig.savefig(savepath, dpi=150, bbox_inches='tight')
     plt.show()
 
-load_experiment
+# ═══════════════════════════════════════════════════════════════════════════
+# Part 6 · Main
+# ═══════════════════════════════════════════════════════════════════════════
+
+def main():
+    # ── Load data ────────────────────────────────────────────────────────────
+    exp = load_experiment()
+
+    # ── Null hypothesis ──────────────────────────────────────────────────────
+    c2_null = chi2_null(exp)
+    print(f"\nchi2_null = {c2_null:.4f}")
+
+    # ── Global best-fit ──────────────────────────────────────────────────────
+    best_params, c2_global = None, None
+    if RUN_GLOBAL or SCAN_MODE == 'profile':
+        print("\nRunning global_minimize (n_random=50) …")
+        best_params, c2_global = global_minimize(exp, n_random=50, seed=42)
+        delta = c2_null - c2_global
+        print("=" * 60)
+        print(f"  chi2_null       = {c2_null:.4f}")
+        print(f"  chi2_global_min = {c2_global:.4f}")
+        print(f"  Delta_chi2      = {delta:.4f}  ({np.sqrt(max(delta,0.)):.2f} sigma)")
+        print("\n  Best-fit parameters:")
+        for nm in ['theta14','theta24','theta15','theta25','dm41','dm51']:
+            print(f"    {nm:12s} = {best_params.get(nm, 0.):.6g}")
+
+        plot_spectrum(exp, best_params, savepath='miniboone_spectrum_bestfit.png')
+
+    # ── 2D parameter scans ───────────────────────────────────────────────────
+    print(f"\nScan method: {SCAN_MODE.upper()}")
+    print("=" * 60)
+
+    for k, task in enumerate(SCAN_TASKS):
+        print(f"\n[Task {k+1}] {task['ax1']} vs {task['ax2']}"
+              f"  ({len(task['grid1'])}×{len(task['grid2'])})")
+
+        if SCAN_MODE == 'fixed':
+            chi2_grid, TS_grid, best_xy, c2_min, best_fp = scan_fixed_2d(
+                task['ax1'], task['grid1'], task['ax2'], task['grid2'], exp,
+                extra_fixed=task.get('extra_fixed'), couple=task.get('couple'))
+            chi2_ref = c2_min
+
+        elif SCAN_MODE == 'profile':
+            chi2_grid, TS_grid, best_xy, chi2_ref, best_fp = scan_profile_2d(
+                task['ax1'], task['grid1'], task['ax2'], task['grid2'], exp,
+                param_roles=task.get('param_roles'), couple=task.get('couple'),
+                chi2_global_min=c2_global, global_best_p=best_params)
+            c2_min = float(np.nanmin(chi2_grid))
+
+        else:
+            raise ValueError(f"Unknown SCAN_MODE='{SCAN_MODE}'. Use 'fixed' or 'profile'.")
+
+        print(f"  chi2_scan_min = {c2_min:.4f}  "
+              f"Δchi2_sig = {c2_null - c2_min:.4f}  "
+              f"best = ({best_xy[0]:.4g}, {best_xy[1]:.4g})")
+
+        # Project global best-fit onto scan axes
+        global_xy = ts_gb = None
+        if best_params is not None and task.get('proj_fn'):
+            global_xy = task['proj_fn'](best_params)
+            ts_gb = ts_at_projection(task['grid1'], task['grid2'], chi2_grid, chi2_ref,
+                                     global_xy, task['xscale'], task['yscale'])
+
+        plot_contour(
+            task['grid1'], task['grid2'], TS_grid,
+            task['xlabel'], task['ylabel'], task['title'],
+            task['xscale'], task['yscale'],
+            best_xy=best_xy, global_best_xy=global_xy, ts_at_global=ts_gb,
+            chi2_null_val=c2_null, chi2_scan_min=c2_min, chi2_global_min=c2_global,
+            savepath=task.get('savepath'),
+        )
+
+
+if __name__ == '__main__':
+    main()
 

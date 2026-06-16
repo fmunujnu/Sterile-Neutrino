@@ -125,20 +125,21 @@ def read_three_spectra(csv_path, column_index=3):
 # 测试模块（调试用，可删除）
 # =============================
 if __name__ == "__main__":
-    test_file = r"E:\sterile neutrino data\HEPData-ins3088922-v1-Unconstrained_14_channels.csv"
+    test_file = r"E:\Sterile Neutrino\sterile neutrino data\HEPData-ins3088922-v1-Unconstrained_14_channels.csv"
     data, bkg, sigbkg = read_three_spectra(test_file)
 
     print("Data bins:", data.shape)
     print("Background bins:", bkg.shape)
     print("Signal+Background bins:", sigbkg.shape)
 
-    print("Data first 5:", data[:28])
-    print("Bkg first 5:", bkg[:28])
-    print("Sig+Bkg first 5:", sigbkg[:28])
+    print("Data first 5:", data[:104])
+    print("Bkg first 5:", bkg[:104])
+    print("Sig+Bkg first 5:", sigbkg[:104])
 
-    data = data[:52]
-    bkg = bkg[:52]
-    sigbkg = sigbkg[:52]
+    N = 104
+    data = data[:N]
+    bkg = bkg[:N]
+    sigbkg = sigbkg[:N]
 
 
 
@@ -161,7 +162,7 @@ if __name__ == "__main__":
     plt.show()
 
     # 读取绝对协方差矩阵（即原始协方差矩阵）
-    test_filecov = r"E:\sterile neutrino data\HEPData-ins3088922-v1-14_channel_covariance_matrix.csv"
+    test_filecov = r"E:\Sterile Neutrino\sterile neutrino data\HEPData-ins3088922-v1-14_channel_covariance_matrix.csv"
     C_abs = read_covariance_matrix(
         test_filecov,
         make_symmetric=False          # 如果只给了半个矩阵就设为True
