@@ -14,7 +14,7 @@
 - `sin2_theta14` and `sin2_theta24` mean sin² of the named angle. Convert to radians only in `parameters.py`.
 - Do not introduce bare names such as `dm41`, `theta14`, `mixing`, or `amplitude` in active code.
 - The exact appearance amplitude must be derived from the mixing matrix; do not silently substitute a small-angle formula.
-- Read the BNB baseline from `configs/bnb_3plus1_reference.yaml`. The active value is `0.4685 km`; never copy the frozen `0.541 km` value into active MicroBooNE code.
+- Read the BNB baseline from `configs/bnb_3nu_anchor.yaml`. The active value is `0.4685 km`; never copy the frozen `0.541 km` value into active MicroBooNE code.
 - The active 3+1 probability is the paper's short-baseline limit: the first three mass states are degenerate and only `delta_m2_41_eV2` drives a phase.
 
 ## Data and detector contract
@@ -31,7 +31,9 @@
 - A profile point fixes the requested scan coordinates and minimizes every other active physical parameter.
 - Use `profile_three_plus_one` or `profile_grid`; do not call a fixed-grid χ² evaluation a profile likelihood.
 - Record the statistical covariance prescription in every result. For the target 2025 paper, use the documented Pearson prescription; the HEPData table header's conflicting CNP wording is only an explicit cross-check mode, never a silent default.
-- The active Gaussian likelihood assumes a covariance fixed at its declared reference point. Do not claim a paper-level profile if its covariance is parameter-dependent until a validated `C(parameters)` implementation exists.
+- The stored total covariance is a reference audit artifact. Active scans must use `PredictionScaledGaussianLikelihood`: rescale the released systematic covariance with the current/reference prediction ratio and add current Pearson statistics. Never silently revert to the fixed reference matrix.
+- Profile the full unitary `sin2_theta14` domain. At fixed appearance amplitude, the large-`sin2_theta14` branch is not generally redundant because `|U_mu4|^2=(1-sin2_theta14)sin2_theta24` changes. Prefits must explicitly test zero-appearance boundary surfaces.
+- The released aggregate Background is frozen only because its oscillatable and non-oscillatable components are unavailable. Preserve this limitation in metadata and never call the resulting curve a collaboration-exact exclusion.
 - Use Cholesky solves, not explicit matrix inversion. Active likelihood code must never silently regularize a covariance; a non-positive-definite covariance is an input error to diagnose.
 
 ## Frozen material

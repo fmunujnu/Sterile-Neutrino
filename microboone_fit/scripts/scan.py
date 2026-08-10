@@ -54,25 +54,42 @@ def _log_cell_edges(values: np.ndarray) -> np.ndarray:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", choices=("prefit", "appearance-profile", "s14-profile"), default="appearance-profile")
-    parser.add_argument("--reference-config", type=Path, default=ROOT / "configs" / "bnb_3plus1_reference.yaml")
+    parser.add_argument("--reference-config", type=Path, default=ROOT / "configs" / "bnb_3nu_anchor.yaml")
     parser.add_argument("--kernel", type=Path, default=ROOT / "data" / "anchor" / "bnb_reference_reweight_kernel")
     parser.add_argument(
         "--covariance",
         type=Path,
         default=ROOT / "data" / "derived" / "bnb_four_channel_total_covariance.csv",
     )
-    parser.add_argument("--delta-m2-grid-eV2", type=_csv_values, default=[0.1, 0.3, 1.0, 3.0, 10.0])
-    parser.add_argument("--sin2-2theta-mue-grid", type=_csv_values, default=[0.0001, 0.001, 0.01, 0.1])
+    parser.add_argument("--delta-m2-grid-eV2", type=_csv_values, help="explicit comma-separated override")
+    parser.add_argument("--sin2-2theta-mue-grid", type=_csv_values, help="explicit comma-separated override")
     parser.add_argument("--sin2-theta14-grid", type=_csv_values, default=[0.001, 0.01, 0.05])
+    parser.add_argument("--grid-points", type=int, default=61, help="points per logarithmic axis when no explicit grid is given")
+    parser.add_argument("--delta-m2-min-eV2", type=float, default=1e-2)
+    parser.add_argument("--delta-m2-max-eV2", type=float, default=1e2)
+    parser.add_argument("--sin2-2theta-mue-min", type=float, default=1e-5)
+    parser.add_argument("--sin2-2theta-mue-max", type=float, default=1.0)
     parser.add_argument("--output-directory", type=Path)
     arguments = parser.parse_args()
     reference, baseline_km = _reference_setup(arguments.reference_config)
-    if any(value <= 0.0 for value in arguments.delta_m2_grid_eV2):
+    if arguments.grid_points < 8:
+        raise ValueError("--grid-points must be at least 8 for a resolved two-dimensional scan")
+    delta_m2_grid = arguments.delta_m2_grid_eV2 or np.geomspace(
+        arguments.delta_m2_min_eV2,
+        arguments.delta_m2_max_eV2,
+        arguments.grid_points,
+    ).tolist()
+    appearance_grid = arguments.sin2_2theta_mue_grid or np.geomspace(
+        arguments.sin2_2theta_mue_min,
+        arguments.sin2_2theta_mue_max,
+        arguments.grid_points,
+    ).tolist()
+    if any(value <= 0.0 for value in delta_m2_grid):
         raise ValueError("delta-m2 grid values must be positive")
-    if any(not 0.0 < value <= 1.0 for value in arguments.sin2_2theta_mue_grid):
+    if any(not 0.0 < value <= 1.0 for value in appearance_grid):
         raise ValueError("sin2(2theta_mue) grid values must lie in (0, 1]")
-    if any(not 0.0 < value <= 0.5 for value in arguments.sin2_theta14_grid):
-        raise ValueError("sin2(theta14) grid values must lie in the conventional branch (0, 0.5]")
+    if any(not 0.0 < value <= 1.0 for value in arguments.sin2_theta14_grid):
+        raise ValueError("sin2(theta14) grid values must lie in (0, 1]")
     workflow = build_strict_bnb_workflow(arguments.kernel, arguments.covariance, reference, baseline_km)
     objective = lambda parameters: workflow.likelihood.chi2(workflow.predictor.predict_total_counts(parameters))
     rows: list[dict[str, object]] = []
@@ -94,8 +111,8 @@ def main() -> None:
     elif arguments.mode == "appearance-profile":
         points = profile_appearance_amplitude_grid(
             objective,
-            arguments.delta_m2_grid_eV2,
-            arguments.sin2_2theta_mue_grid,
+            delta_m2_grid,
+            appearance_grid,
         )
         for point in points:
             if point.best_fit.chi2 < global_best.chi2:
@@ -112,7 +129,7 @@ def main() -> None:
         points = profile_grid(
             objective,
             {
-                "delta_m2_41_eV2": arguments.delta_m2_grid_eV2,
+                "delta_m2_41_eV2": delta_m2_grid,
                 "sin2_theta14": arguments.sin2_theta14_grid,
             },
         )
@@ -147,8 +164,23 @@ def main() -> None:
         x_edges = _log_cell_edges(x_values)
         y_edges = _log_cell_edges(y_values)
         figure, axis = plt.subplots(figsize=(7.5, 5.8))
-        colour = axis.pcolormesh(x_edges, y_edges, pivot.to_numpy(dtype=float), shading="flat", cmap="viridis")
-        available_levels = [level for level in (2.30, 4.61, 5.99, 9.21) if level <= float(pivot.to_numpy().max())]
+        delta_surface = pivot.to_numpy(dtype=float)
+        # The physics of interest is the low-delta-chi2 contour region.  Very
+        # strongly excluded points can reach thousands and would otherwise
+        # compress every relevant colour into a nearly uniform dark patch.
+        # This cap changes only the raster colour scale, never CSV values or
+        # contour construction.
+        colour_limit = min(25.0, max(9.21, float(delta_surface.max())))
+        colour = axis.pcolormesh(
+            x_edges,
+            y_edges,
+            delta_surface,
+            shading="flat",
+            cmap="viridis",
+            vmin=0.0,
+            vmax=colour_limit,
+        )
+        available_levels = [level for level in (2.30, 4.61, 5.99, 9.21) if level <= float(delta_surface.max())]
         # Contour interpolation across the tiny default smoke-test grid is
         # visually misleading.  Only draw contours after the caller provides
         # enough scan coordinates to support a genuine resolved surface.
@@ -186,20 +218,21 @@ def main() -> None:
             "chi2": global_best.chi2,
         },
         "optimizer": {
-            "algorithm": "SciPy differential_evolution with polishing",
+            "algorithm": "SciPy differential_evolution with polishing; full volume plus explicit s24=0 and s14=0 boundary profiles",
             "prefit_seeds": [42, 137, 314],
-            "profile_seed_rule": "42 + row index",
+            "appearance_profile_method": "deterministic 33-point basin search in sin2_theta14 plus bounded polishing of every sampled local basin",
             "delta_m2_41_eV2_bounds": [0.01, 100.0],
-            "sin2_theta14_bounds": [0.0, 0.5],
+            "sin2_theta14_bounds": [0.0, 1.0],
             "sin2_theta24_bounds": [0.0, 1.0],
             "minimum_claim": "lowest point found among the multiseed prefit and all evaluated profile points; not a proof of the mathematical global minimum",
         },
         "scan_axes": {
-            "delta_m2_41_eV2": arguments.delta_m2_grid_eV2,
-            "sin2_2theta_mue": arguments.sin2_2theta_mue_grid if arguments.mode == "appearance-profile" else None,
+            "delta_m2_41_eV2": delta_m2_grid,
+            "sin2_2theta_mue": appearance_grid if arguments.mode == "appearance-profile" else None,
             "sin2_theta14": arguments.sin2_theta14_grid if arguments.mode == "s14-profile" else None,
         },
-        "grid_note": "the small default grid is an executable smoke test; use a much denser caller-supplied grid before interpreting interpolated contours",
+        "grid_note": "the default is a resolved logarithmic grid; increase --grid-points for convergence studies",
+        "plot_colour_note": "heatmap colour maximum is capped at delta_chi2=25 (never below 9.21) to resolve the exclusion region; CSV values and contours use unclipped delta_chi2",
         "contour_note": "delta_chi2 is relative to the lowest fit found in this run; any Wilks contour labels are diagnostic, not the paper CLs construction",
     }
     (output_directory / "metadata.json").write_text(

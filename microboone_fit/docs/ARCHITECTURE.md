@@ -6,7 +6,7 @@
 
 参考预测是 HEPData 的公开 `Signal + Background`；公开 `Background` 冻结并只加一次。`build_anchor.py` 采用声明的 per-reco-bin reference-ratio 方法构造 60-bin true-energy kernel，并要求在参考点逐 bin 精确复现公开总预测，否则 profile 运行被拒绝。
 
-公开的 364×364 文件是系统协方差，已在 `data/raw/` 中；`scripts/prepare_bnb_total_covariance.py` 会以 Pearson 统计项在该公开参考谱处合成 104×104 总协方差 CSV，并将参考谱哈希写入相邻 JSON。HEPData 表头的 CNP 表述不能静默替换统计处方。
+公开的 364×364 文件是系统协方差，已在 `data/raw/` 中；`scripts/prepare_bnb_total_covariance.py` 会以 Pearson 统计项在公开参考谱处合成并保存 104×104 参考总协方差 CSV。实际扫描由 `PredictionScaledGaussianLikelihood` 在每一点用 `P/P0` 外积缩放系统协方差，并加入 `diag(P)`。HEPData 表头的 CNP 表述不能静默替换论文 Methods 的 Pearson 处方。
 
 ## 模块边界
 
@@ -21,9 +21,13 @@
 - `prediction.py`：强制模板在参考点闭合；不做经验校正。
 - `likelihood.py`、`fitting.py`：统计推断；不包含物理常数或文件路径。
   `fitting.py` 还提供固定精确 `sin²(2θμe)` 后，在物理约束曲线上 profile
-  `sin²θ14`、`sin²θ24` 的二维扫描，禁止用 `θ14=θ24` 代替 profile。
+  `sin²θ14`、`sin²θ24` 的二维扫描，搜索完整两个 `sin²θ14` 分支，并显式检查零外观边界；禁止用 `θ14=θ24` 代替 profile。
 
-BNB 的单基线近似值 `0.4685 km` 只在 `configs/bnb_3plus1_reference.yaml` 声明，并同时进入 anchor 构造和扫描预测；旧代码中的 `0.541 km` 属于错误实验基线，不得恢复。
+BNB 的单基线近似值 `0.4685 km` 只在 `configs/bnb_3nu_anchor.yaml` 声明，并同时进入 anchor 构造和扫描预测；旧代码中的 `0.541 km` 属于错误实验基线，不得恢复。
+
+## 无法由现有公开输入消除的限制
+
+HEPData 只给出聚合 `Background`，没有给出其中每个可振荡中微子成分的真能量与来源模板。因此活动预测只能冻结整个公开背景块；这能保证参考谱记账正确，但不能严格复制合作组对可振荡背景的逐成分更新。同理，公开系统协方差没有拆出论文所述保持不变的非中微子和探测器外成分，当前整谱分数缩放是明确记录的近似。只有获得这些分量模板后，才能声称严格论文级 BNB likelihood。
 
 ## 未来 1+3+1 和全局拟合
 

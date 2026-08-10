@@ -62,8 +62,8 @@ class DeclaredTotalCovariance:
             raise ValueError("statistical_treatment must be a non-empty declaration")
         if self.parameter_dependence != "fixed_at_reference":
             raise ValueError(
-                "active BNB likelihood only supports a declared covariance fixed at the reference; "
-                "a parameter-dependent covariance requires a dedicated likelihood implementation"
+                "the stored covariance artifact must describe the fixed reference matrix; "
+                "parameter-dependent covariance is evaluated by the dedicated scan likelihood"
             )
         if len(self.reference_prediction_sha256) != 64 or any(
             character not in "0123456789abcdef" for character in self.reference_prediction_sha256.lower()

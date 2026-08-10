@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .covariance import DeclaredTotalCovariance, load_declared_total_covariance, prediction_sha256
-from .likelihood import GaussianBinnedLikelihood
+from .likelihood import PredictionScaledGaussianLikelihood
 from .parameters import ThreePlusOneParameters
 from .prediction import BnbFourChannelPredictor
 from .published_inputs import PublishedBnbFourChannelInputs, load_bnb_four_channel_inputs
@@ -19,7 +19,7 @@ class StrictBnbWorkflow:
 
     inputs: PublishedBnbFourChannelInputs
     predictor: BnbFourChannelPredictor
-    likelihood: GaussianBinnedLikelihood
+    likelihood: PredictionScaledGaussianLikelihood
     statistical_treatment: str
     covariance_parameter_dependence: str
 
@@ -41,7 +41,11 @@ def build_strict_bnb_workflow(
     return StrictBnbWorkflow(
         inputs=inputs,
         predictor=predictor,
-        likelihood=GaussianBinnedLikelihood(inputs.observed_counts, total_covariance.covariance),
+        likelihood=PredictionScaledGaussianLikelihood(
+            inputs.observed_counts,
+            inputs.published_total_prediction_counts,
+            inputs.systematic_covariance,
+        ),
         statistical_treatment=total_covariance.statistical_treatment,
-        covariance_parameter_dependence=total_covariance.parameter_dependence,
+        covariance_parameter_dependence="prediction_scaled_fractional_systematics_with_current_Pearson_statistics",
     )

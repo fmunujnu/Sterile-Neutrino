@@ -10,13 +10,14 @@ import pandas as pd
 import yaml
 
 from sterile_fit.models.three_plus_one import ThreePlusOneVacuumModel
+from sterile_fit.covariance import load_declared_total_covariance
 from sterile_fit.parameters import ThreePlusOneParameters
 from sterile_fit.published_inputs import load_bnb_four_channel_inputs
 from sterile_fit.workflows import build_strict_bnb_workflow
 
 
 ROOT = Path(__file__).resolve().parents[1]
-REFERENCE_CONFIG = ROOT / "configs" / "bnb_3plus1_reference.yaml"
+REFERENCE_CONFIG = ROOT / "configs" / "bnb_3nu_anchor.yaml"
 KERNEL_DIRECTORY = ROOT / "data" / "anchor" / "bnb_reference_reweight_kernel"
 COVARIANCE_PATH = ROOT / "data" / "derived" / "bnb_four_channel_total_covariance.csv"
 RESPONSE_DIRECTORY = ROOT / "data" / "derived" / "archival_2022_reco_bnb26_given_true"
@@ -43,6 +44,14 @@ def main() -> None:
     reference_chi2 = workflow.likelihood.chi2(reference_prediction)
     if not np.isfinite(reference_chi2):
         raise AssertionError("reference chi2 is not finite")
+    stored_reference_covariance = load_declared_total_covariance(COVARIANCE_PATH).covariance
+    active_reference_covariance = workflow.likelihood.covariance_for_prediction(reference_prediction)
+    if not np.allclose(active_reference_covariance, stored_reference_covariance, rtol=1e-12, atol=1e-10):
+        raise AssertionError("active prediction-scaled covariance does not reproduce the declared reference matrix")
+    audit_prediction = workflow.predictor.predict_total_counts(ThreePlusOneParameters(1.2, 0.1, 0.1))
+    audit_covariance = workflow.likelihood.covariance_for_prediction(audit_prediction)
+    if np.allclose(audit_covariance, active_reference_covariance, rtol=1e-10, atol=1e-8):
+        raise AssertionError("active covariance remained fixed when the oscillated prediction changed")
     kernel_metadata = json.loads((KERNEL_DIRECTORY / "metadata.json").read_text(encoding="utf-8"))
     if kernel_metadata.get("baseline_km") != baseline_km:
         raise AssertionError("kernel metadata baseline does not match the active config")
@@ -71,7 +80,8 @@ def main() -> None:
     print("PASS visible covariance: 104 x 104 CSV with JSON metadata")
     print("PASS visible Reco matrices: 4 x (26 x 60), every true column sums to zero or one")
     print("PASS visible reference kernel: published Signal + Background closes bin by bin")
-    print("PASS fixed background: HEPData Background is added exactly once")
+    print("PASS bookkeeping: HEPData Background is added exactly once (its frozen treatment remains a declared approximation)")
+    print("PASS scan covariance: reference matrix closes and changes with the current prediction")
     print("PASS 3+1 probability conservation")
     print(f"PASS declared BNB baseline: {baseline_km:.4f} km")
     print(f"PASS reference chi2 is finite: {reference_chi2:.8g}")

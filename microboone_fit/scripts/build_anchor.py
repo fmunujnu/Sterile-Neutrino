@@ -57,7 +57,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Build K(reco,true,process) from the public reference prediction using visible inputs."
     )
-    parser.add_argument("--reference-config", type=Path, default=Path("configs/bnb_3plus1_reference.yaml"))
+    parser.add_argument("--reference-config", type=Path, default=Path("configs/bnb_3nu_anchor.yaml"))
     parser.add_argument("--flux", type=Path, default=Path("data/inputs/bnb_flux.csv"))
     parser.add_argument(
         "--response-directory",
@@ -151,7 +151,8 @@ def main() -> None:
                 "unknown cross section and efficiency are not separately identified; their reference-weighted effect is assumed to be absorbed by the chosen response-times-flux true-energy prior and one scale factor per reconstructed bin",
                 "neutrino and antineutrino contributions to the same selected final-state channel share that effective ratio",
                 "the 2022 normalized migration matrix is used as the declared true-energy prior",
-                "the HEPData reference prediction is assigned to the configured 3+1 reference point",
+                "the HEPData nominal prediction is anchored at the configured zero-sterile-mixing 3nu limit",
+                "the aggregate HEPData Background block is frozen because public component-level oscillatable templates are unavailable",
             ],
         },
     )

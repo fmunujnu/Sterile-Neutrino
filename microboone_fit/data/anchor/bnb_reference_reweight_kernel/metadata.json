@@ -5,9 +5,9 @@
   "formula": "K_r,t,source = S_reference_r * R_r,t * flux_source_t / sum_t,source(R_r,t * flux_source_t * P_source_to_final(reference))",
   "reference_parameters": {
     "delta_m2_41_eV2": 1.2,
-    "sin2_theta14": 0.041666666666666664,
-    "sin2_theta24": 0.018,
-    "sin2_2theta_mue_exact": 0.0028749999999999995
+    "sin2_theta14": 0.0,
+    "sin2_theta24": 0.0,
+    "sin2_2theta_mue_exact": 0.0
   },
   "fixed_background_definition": "HEPData published Background block, frozen during reweighting",
   "reference_total_definition": "HEPData published Signal + Background block",
@@ -15,7 +15,8 @@
     "unknown cross section and efficiency are not separately identified; their reference-weighted effect is assumed to be absorbed by the chosen response-times-flux true-energy prior and one scale factor per reconstructed bin",
     "neutrino and antineutrino contributions to the same selected final-state channel share that effective ratio",
     "the 2022 normalized migration matrix is used as the declared true-energy prior",
-    "the HEPData reference prediction is assigned to the configured 3+1 reference point"
+    "the HEPData nominal prediction is anchored at the configured zero-sterile-mixing 3nu limit",
+    "the aggregate HEPData Background block is frozen because public component-level oscillatable templates are unavailable"
   ],
   "format": "bnb_four_channel_text_templates_v1",
   "shape": {

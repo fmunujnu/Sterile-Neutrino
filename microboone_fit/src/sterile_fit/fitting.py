@@ -7,15 +7,56 @@ from itertools import product
 from typing import Callable, Iterable, Mapping
 
 import numpy as np
-from scipy.optimize import differential_evolution
+from scipy.optimize import differential_evolution, minimize_scalar
 
 from .parameters import ThreePlusOneParameters
 Objective = Callable[[ThreePlusOneParameters], float]
 PARAMETER_NAMES = ("delta_m2_41_eV2", "sin2_theta14", "sin2_theta24")
 PROFILE_MIXING_BOUNDS = {
-    "sin2_theta14": (0.0, 0.5),
+    "sin2_theta14": (0.0, 1.0),
     "sin2_theta24": (0.0, 1.0),
 }
+
+
+def _profile_bounded_scalar(
+    objective: Callable[[float], float],
+    bounds: tuple[float, float],
+    *,
+    grid_points: int = 33,
+) -> tuple[float, float, str]:
+    """Deterministically locate and polish every sampled one-dimensional basin."""
+    lower, upper = bounds
+    if not np.isfinite(lower) or not np.isfinite(upper) or upper < lower:
+        raise ValueError("scalar profile bounds must be finite and increasing")
+    if upper == lower:
+        value = float(objective(lower))
+        return lower, value, "unique scalar boundary point"
+    coordinates = np.linspace(lower, upper, grid_points)
+    values = np.asarray([objective(float(value)) for value in coordinates], dtype=float)
+    if not np.all(np.isfinite(values)):
+        raise RuntimeError("scalar profile objective returned a non-finite value")
+    candidates: list[tuple[float, float]] = [
+        (float(coordinates[0]), float(values[0])),
+        (float(coordinates[-1]), float(values[-1])),
+    ]
+    local_indices = [
+        index
+        for index in range(1, grid_points - 1)
+        if values[index] <= values[index - 1] and values[index] <= values[index + 1]
+    ]
+    if not local_indices:
+        local_indices = [int(np.argmin(values[1:-1])) + 1]
+    for index in local_indices:
+        result = minimize_scalar(
+            objective,
+            bounds=(float(coordinates[index - 1]), float(coordinates[index + 1])),
+            method="bounded",
+            options={"xatol": 1e-10},
+        )
+        if result.success and np.isfinite(result.fun):
+            candidates.append((float(result.x), float(result.fun)))
+    best_coordinate, best_value = min(candidates, key=lambda item: item[1])
+    return best_coordinate, best_value, f"deterministic {grid_points}-point basin search plus bounded polishing"
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,8 +97,6 @@ def _validate_fixed_parameters(fixed_parameters: Mapping[str, float]) -> None:
         "sin2_theta24": fixed_parameters.get("sin2_theta24", 0.0),
     }
     ThreePlusOneParameters(**values)
-    if values["sin2_theta14"] > PROFILE_MIXING_BOUNDS["sin2_theta14"][1]:
-        raise ValueError("3+1 profile uses the conventional small-mixing branch sin2_theta14 <= 0.5")
 
 
 def profile_three_plus_one(
@@ -109,8 +148,20 @@ def profile_three_plus_one(
 
 
 def prefit_three_plus_one(objective: Objective, *, seed: int = 42) -> FitPoint:
-    """Global 3+1 minimum, expressed as a profile with zero fixed parameters."""
-    return profile_three_plus_one(objective, {}, seed=seed).best_fit
+    """Best 3+1 fit including lower-dimensional zero-appearance boundaries.
+
+    A continuous global optimiser is not guaranteed to land exactly on
+    ``s24=0`` or ``s14=0`` even when the physical minimum lies there.  Profile
+    the full volume and both zero-appearance boundary surfaces explicitly, then
+    return the lowest candidate.  Multiple seeds are still required by callers
+    because the mass-squared direction is oscillatory.
+    """
+    candidates = (
+        profile_three_plus_one(objective, {}, seed=seed).best_fit,
+        profile_three_plus_one(objective, {"sin2_theta24": 0.0}, seed=seed + 10_000).best_fit,
+        profile_three_plus_one(objective, {"sin2_theta14": 0.0}, seed=seed + 20_000).best_fit,
+    )
+    return min(candidates, key=lambda point: point.chi2)
 
 
 def profile_s14_s24_at_fixed_sin2_2theta_mue(
@@ -118,7 +169,6 @@ def profile_s14_s24_at_fixed_sin2_2theta_mue(
     *,
     delta_m2_41_eV2: float,
     sin2_2theta_mue: float,
-    seed: int = 42,
 ) -> AppearanceAmplitudeProfileResult:
     """Profile the physical 3+1 mixing freedom at fixed appearance amplitude.
 
@@ -129,9 +179,11 @@ def profile_s14_s24_at_fixed_sin2_2theta_mue(
     where ``s14 = sin²θ14`` and ``s24 = sin²θ24``.  Thus a non-zero fixed
     appearance amplitude leaves one physical degree of freedom, ``s14``;
     ``s24`` is derived rather than independently minimized.  The optimiser is
-    restricted to ``0 <= s14 <= 0.5`` and ``0 <= s24 <= 1``.  The s14 bound
-    selects the conventional branch used when expressing the fit through
-    sin²(2θee); the discarded branch duplicates that disappearance amplitude.
+    searched over the complete unitary domain ``0 <= s14 <= 1`` and
+    ``0 <= s24 <= 1``.  Although ``s14`` and ``1-s14`` give the same electron
+    disappearance amplitude, they do not in general give the same
+    ``|U_mu4|²=(1-s14)s24`` at fixed appearance amplitude.  Dropping the
+    large-``s14`` branch would therefore not be a complete profile.
     This is a profile likelihood, not the historical arbitrary slice
     ``θ14 = θ24``.
     """
@@ -144,21 +196,17 @@ def profile_s14_s24_at_fixed_sin2_2theta_mue(
         make_parameters: Callable[[float], ThreePlusOneParameters],
         bounds: tuple[float, float],
     ) -> tuple[FitPoint, str]:
-        result = differential_evolution(
-            lambda vector: objective(make_parameters(float(vector[0]))),
-            bounds=[bounds],
-            seed=seed,
-            polish=True,
-            workers=1,
-            updating="immediate",
+        coordinate, chi2, message = _profile_bounded_scalar(
+            lambda value: objective(make_parameters(value)),
+            bounds,
         )
-        if not result.success or not np.isfinite(result.fun):
-            raise RuntimeError(f"appearance-amplitude profile optimization failed: {result.message}")
-        return FitPoint(make_parameters(float(result.x[0])), float(result.fun)), result.message
+        return FitPoint(make_parameters(coordinate), chi2), message
 
     if sin2_2theta_mue == 0.0:
-        # The zero-amplitude boundary is a union of the two branches admitted
-        # by the conventional s14 <= 0.5 parameterization.
+        # The zero-amplitude boundary is the union s24=0 or s14 in {0,1}.
+        # Searching s24=0 over the full s14 interval includes both endpoints;
+        # the s14=0 branch is also searched over all s24.  At s14=1 the
+        # short-baseline active probabilities are independent of s24.
         candidates = (
             minimise_on_branch(
                 lambda s14: ThreePlusOneParameters(delta_m2_41_eV2, s14, 0.0),
@@ -184,7 +232,7 @@ def profile_s14_s24_at_fixed_sin2_2theta_mue(
     # s24 <= 1 implies 4*s14*(1-s14) >= sin2_2theta_mue.
     root = np.sqrt(1.0 - sin2_2theta_mue)
     s14_lower = (1.0 - root) / 2.0
-    s14_upper = PROFILE_MIXING_BOUNDS["sin2_theta14"][1]
+    s14_upper = (1.0 + root) / 2.0
 
     def constrained_parameters(s14: float) -> ThreePlusOneParameters:
         denominator = 4.0 * s14 * (1.0 - s14)
@@ -192,26 +240,18 @@ def profile_s14_s24_at_fixed_sin2_2theta_mue(
         # Floating-point roundoff can exceed the endpoint by a few ulps.
         return ThreePlusOneParameters(delta_m2_41_eV2, s14, float(np.clip(s24, 0.0, 1.0)))
 
-    result = differential_evolution(
-        lambda vector: objective(constrained_parameters(float(vector[0]))),
-        bounds=[(s14_lower, s14_upper)],
-        seed=seed,
-        polish=True,
-        workers=1,
-        updating="immediate",
+    coordinate, chi2, message = _profile_bounded_scalar(
+        lambda value: objective(constrained_parameters(value)),
+        (s14_lower, s14_upper),
     )
-    if not result.success or not np.isfinite(result.fun):
-        raise RuntimeError(f"appearance-amplitude profile optimization failed: {result.message}")
-    best_fit = FitPoint(constrained_parameters(float(result.x[0])), float(result.fun))
-    return AppearanceAmplitudeProfileResult(delta_m2_41_eV2, sin2_2theta_mue, best_fit, result.message)
+    best_fit = FitPoint(constrained_parameters(coordinate), chi2)
+    return AppearanceAmplitudeProfileResult(delta_m2_41_eV2, sin2_2theta_mue, best_fit, message)
 
 
 def profile_appearance_amplitude_grid(
     objective: Objective,
     delta_m2_values_eV2: Iterable[float],
     sin2_2theta_mue_values: Iterable[float],
-    *,
-    seed: int = 42,
 ) -> list[AppearanceAmplitudeProfileResult]:
     """Profile every point of the exact sin²(2θμe)--Δm²41 scan plane."""
     delta_values = tuple(float(value) for value in delta_m2_values_eV2)
@@ -223,9 +263,8 @@ def profile_appearance_amplitude_grid(
             objective,
             delta_m2_41_eV2=delta_m2,
             sin2_2theta_mue=amplitude,
-            seed=seed + index,
         )
-        for index, (delta_m2, amplitude) in enumerate(product(delta_values, amplitude_values))
+        for delta_m2, amplitude in product(delta_values, amplitude_values)
     ]
 
 
