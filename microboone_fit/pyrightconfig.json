@@ -1,0 +1,9 @@
+{
+  "include": ["src", "scripts", "tests"],
+  "executionEnvironments": [
+    {
+      "root": ".",
+      "extraPaths": ["src"]
+    }
+  ]
+}
