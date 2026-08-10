@@ -1,0 +1,10 @@
+analysis_name: "bnb_four_channel_3plus1_template_validation"
+model: "3+1"
+channels: ["nue_cc_fc", "nue_cc_pc", "numu_cc_fc", "numu_cc_pc"]
+reference_parameters:
+  delta_m2_41_eV2: 1.2
+  sin2_theta14: 0.041666666666666664
+  sin2_theta24: 0.018
+statistical_treatment: "load from data/derived/bnb_four_channel_total_covariance.npz"
+template_requirement: "data/derived/bnb_four_channel_oscillation_templates.npz"
+interpretation: "profile enabled only after supplied templates reproduce the published reference prediction"

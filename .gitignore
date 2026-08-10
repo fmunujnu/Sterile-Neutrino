@@ -1,0 +1,11 @@
+# Python caches and test artefacts are local execution products.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Analysis runs are reproducible outputs; retain only the directory marker.
+/microboone_fit/runs/*
+!/microboone_fit/runs/.gitkeep
+
+# Windows-reserved-name artefact accidentally present in the workspace root.
+/nul
