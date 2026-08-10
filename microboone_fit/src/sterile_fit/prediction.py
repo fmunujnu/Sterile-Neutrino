@@ -17,7 +17,7 @@ class BnbFourChannelPredictor:
     """A parameter-dependent predictor built solely from declared templates."""
 
     templates: BnbFourChannelOscillationTemplates
-    baseline_km: float = 0.541
+    baseline_km: float
 
     def __post_init__(self) -> None:
         if not np.isfinite(self.baseline_km) or self.baseline_km <= 0.0:

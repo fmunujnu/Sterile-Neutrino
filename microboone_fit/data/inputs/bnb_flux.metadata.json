@@ -1,0 +1,7 @@
+{
+  "format": "bnb_flux_true_energy_60x0.05_GeV",
+  "source": "frozen/baseline_v1/testchonggou1.py",
+  "source_sha256": "4539ca390085dddaebe0d2a55e41fe03b132bf619dcf99eea5bf08016bf3962e",
+  "units": "historical source units; common overall normalization cancels in anchor reweight ratios",
+  "warning": "shape provenance is preserved; absolute flux normalization is not independently asserted"
+}

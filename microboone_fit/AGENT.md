@@ -14,12 +14,15 @@
 - `sin2_theta14` and `sin2_theta24` mean sin² of the named angle. Convert to radians only in `parameters.py`.
 - Do not introduce bare names such as `dm41`, `theta14`, `mixing`, or `amplitude` in active code.
 - The exact appearance amplitude must be derived from the mixing matrix; do not silently substitute a small-angle formula.
+- Read the BNB baseline from `configs/bnb_3plus1_reference.yaml`. The active value is `0.4685 km`; never copy the frozen `0.541 km` value into active MicroBooNE code.
+- The active 3+1 probability is the paper's short-baseline limit: the first three mass states are degenerate and only `delta_m2_41_eV2` drives a phase.
 
 ## Data and detector contract
 
 - `data/raw/` is read-only. Keep the source DOI and SHA-256 in `data/manifests/sources.yaml`.
 - Do not silently slice a public table. Declare every channel and bin selection in `binning.py`.
-- A profile run requires an explicit 104-bin total covariance archive and explicit detector-folded true-energy templates. It must fail if either file is absent or malformed.
+- A profile run requires an explicit 104-bin total covariance CSV plus JSON metadata and explicit CSV detector-folded true-energy templates. It must fail if any visible file is absent or malformed.
+- Active numerical inputs and scan outputs use CSV/JSON/YAML only. NPZ, pickle, opaque binary arrays, or hidden serialization conventions are forbidden.
 - A response template already contains flux, cross section, efficiency, selection and migration. Never multiply those quantities a second time. Neutrino and antineutrino templates are separate required inputs.
 - Do not calibrate predictions to observed data. Reference validation is always against the published nominal prediction.
 
@@ -33,13 +36,12 @@
 
 ## Frozen material
 
-- `frozen/baseline_v1/` and `frozen/current_system_backup/` are evidence only. Do not import, execute, modify, or use them in active predictions.
+- `frozen/baseline_v1/` and `frozen/current_system_backup/` are evidence only. Do not import, execute or modify them. The user-selected BNB flux vectors have been syntax-parsed once into `data/inputs/bnb_flux.csv`; active predictions read only that visible CSV and its provenance JSON.
 - If legacy behavior is examined, do it in a separate diagnostic script and label it as historical; never add a compatibility adapter to `src/`.
 
 ## Required checks after an edit
 
 1. Run `python -m pytest -q`.
-2. Run `python -m sterile_fit.cli inspect-published` with `PYTHONPATH=src`.
-3. Run `python -m sterile_fit.cli validate-3plus1` with `PYTHONPATH=src`.
-4. If templates or covariance readers change, add a negative test that proves invalid shapes, names, or reference mismatches are rejected.
-5. Separate confirmed facts, implementation assumptions, and unresolved uncertainties in the final report.
+2. Run `python scripts/check.py` from the repository root.
+3. If templates or covariance readers change, add a negative test that proves invalid shapes, names, or reference mismatches are rejected.
+4. Separate confirmed facts, implementation assumptions, and unresolved uncertainties in the final report.

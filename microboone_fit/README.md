@@ -1,147 +1,122 @@
-# MicroBooNE BNB 3+1 profile analysis
+# MicroBooNE BNB reference-reweight analysis
 
-这是一个为 **MicroBooNE BNB 前四个通道、104 个重建能量 bin** 建立的 3+1 剖面似然代码库。它的首要规则是：参数、数据顺序、模板物理含义和统计处理必须显式可检验。
+本项目使用 MicroBooNE 公开 BNB 前四个 CC 通道，在一个明确声明的 3+1 参考点上构造可审计的经验重加权核。它不寻找或声称恢复合作组原始 MC；所有活跃数值输入均为 CSV/YAML，所有元数据与结果均为 JSON/CSV。
 
-当前未实现 1+3+1；未来模型只能通过 `models/base.py` 的概率接口接入，并先证明在相应极限回到 3+1。
+## 最常用的三个命令
 
-## 当前能严格做什么
-
-1. 读取并验证公开 14×26 数据与 364×364 协方差。
-2. 明确选择 BNB 前四个 CC 通道的 104-bin 子空间。
-3. 用无歧义的 3+1 参数计算真空振荡概率。
-4. 在提供**真能量、按味道过程拆分的探测器折叠模板**及**完整总协方差**后，执行严格定义的 profile likelihood。
-5. 从公开 HEPData 数字表重画 BNB 四通道的 data / background / signal+background 面板。
-
-它不能仅凭公开最终重建谱自动恢复合作组的内部 MC、效率或截面；缺失模板时 profile 脚本会拒绝运行，而不会悄悄退回旧代码或猜测输入。
-
-## 安装与基础验证
+首次安装：
 
 ```powershell
 cd "E:\Sterile Neutrino\microboone_fit"
 python -m pip install -e ".[dev]"
-python -m pytest -q
-python -m sterile_fit.cli inspect-published
-python -m sterile_fit.cli validate-3plus1
 ```
 
-如果未安装为 editable package，可临时设置：
+完整检查：
 
 ```powershell
-$env:PYTHONPATH = "src"
+python scripts/check.py
 ```
 
-## 重画公开 BNB 图片
+重画 HEPData 公开 BNB 四通道图：
 
 ```powershell
-$env:PYTHONPATH = "src"
 python scripts/plot_published_bnb.py --output runs/reproduction/published_bnb_four_channels.png
 ```
 
-该命令严格使用公开数表的 data、background、signal+background 和统计误差，输出四个 BNB 通道的可复核面板。它复现的是公开数值输入；不会声称复现论文完整 BNB+NuMI 图形、合作组作图样式或内部拟合结果。
-
-## 严格 profile 所需的两个输入
-
-在运行 profile 前，必须提供有来源的外部 MC 模板；总协方差可由本仓库已有的公开系统协方差加公开数据表的 CNP 统计项构造。
-
-### `data/derived/bnb_four_channel_oscillation_templates.npz`
-
-必须包含：
-
-```text
-true_energy_GeV                 (n_true,)
-    fixed_non_oscillatory_background_counts        (104,)
-    beam_nue_to_nue_cc_response_counts             (104, n_true)
-    beam_numu_to_nue_cc_response_counts            (104, n_true)
-    beam_nue_to_numu_cc_response_counts            (104, n_true)
-    beam_numu_to_numu_cc_response_counts           (104, n_true)
-    beam_nuebar_to_nuebar_cc_response_counts       (104, n_true)
-    beam_numubar_to_nuebar_cc_response_counts      (104, n_true)
-    beam_nuebar_to_numubar_cc_response_counts      (104, n_true)
-    beam_numubar_to_numubar_cc_response_counts     (104, n_true)
-```
-
-每个 `beam_*_response_counts` 元素是在真能量 bin 中、相应束流初始味道到末态 CC 过程的探测器折叠事件数，已经包括 BNB 通量、截面、固定效率、选择和 Reco 迁移。中微子与反中微子模板必须分开提供；程序只再乘相应的振荡概率，绝不重复乘效率或截面。
-
-`fixed_non_oscillatory_background_counts` 只能容纳已明确证明不随这套振荡概率变化的成分，例如宇宙线或仪器背景。公开表中笼统名为 `Background` 的向量不能直接填入此处：它须先与本征束流 νe、νμ CC 成分逐项核对，避免重复计数。
-
-### `data/derived/bnb_four_channel_total_covariance.npz`
-
-必须包含：
-
-```text
-covariance                       (104, 104)
-statistical_treatment            scalar string
-parameter_dependence             "fixed_at_reference"
-reference_prediction_sha256      scalar string
-provenance                       scalar string
-```
-
-仓库已含公开的 364×364 **系统**协方差；其表头明确排除数据统计项。目标 2025 论文的方法部分使用 Pearson 统计协方差，因此默认命令以公开 `Signal + Background` 参考谱构造 BNB 前四通道的固定参考 Pearson 总协方差：
+运行精确 `sin²(2θμe)-Δm²41` profile：
 
 ```powershell
-$env:PYTHONPATH = "src"
-python scripts/prepare_bnb_total_covariance.py --statistical-method pearson
+python scripts/scan.py --mode appearance-profile
 ```
 
-生成文件会记录参考谱 SHA-256 和来源；profile workflow 会验证它正对应当前公开参考谱。HEPData 表头和论文在 CNP/Pearson 描述上不一致，故 `--statistical-method cnp` 只用于明确的交叉检查，不能默认称为论文复现。当前 likelihood 仅支持 `parameter_dependence="fixed_at_reference"`；若论文目标要求每个参数点重新构造统计协方差，必须先实现专门的 `C(parameters)` likelihood。
+扫描结果写入 `runs/<时间>_appearance-profile/result.csv`，运行说明写入同目录的 `metadata.json`。
+默认 5×4 网格用于快速验证整条链能运行，不是论文级分辨率；正式绘图应通过下面两个 grid 参数提供更密的对数网格。少于 8×8 点时程序不会绘制容易误导的插值等高线。
 
-模板在参考点必须逐 bin 复现 HEPData 的 `Signal + Background`；否则脚本立即停止。
-
-## 运行预拟合与 profile
-
-以下参考点只是示例参数，不自动称为论文 best fit：
+## 可调扫描参数
 
 ```powershell
-$env:PYTHONPATH = "src"
-
-python scripts/run_prefit.py `
-  --templates data/derived/bnb_four_channel_oscillation_templates.npz `
-  --total-covariance data/derived/bnb_four_channel_total_covariance.npz `
-  --reference-delta-m2-eV2 1.2 `
-  --reference-sin2-theta14 0.041666666666666664 `
-  --reference-sin2-theta24 0.018
-
-python scripts/run_profile.py `
-  --templates data/derived/bnb_four_channel_oscillation_templates.npz `
-  --total-covariance data/derived/bnb_four_channel_total_covariance.npz `
-  --reference-delta-m2-eV2 1.2 `
-  --reference-sin2-theta14 0.041666666666666664 `
-  --reference-sin2-theta24 0.018 `
-  --delta-m2-grid-eV2 0.1,0.3,1.0,3.0,10.0 `
-  --sin2-theta14-grid 0.001,0.01,0.05
-```
-
-第二条命令在每个固定的 `(Δm²41, sin²θ14)` 点，对未固定的 `sin²θ24` 做全局有界最小化；这才是该二维扫描的 profile likelihood。它严格对应于“模板和总协方差均已声明、协方差固定在参考点”的统计模型。
-
-若目标是论文使用的 `sin²(2θμe)–Δm²41` 平面，应使用精确约束而不是小角近似或强制 `θ14=θ24`：
-
-```powershell
-python scripts/run_profile.py `
-  --templates data/derived/bnb_four_channel_oscillation_templates.npz `
-  --total-covariance data/derived/bnb_four_channel_total_covariance.npz `
-  --reference-delta-m2-eV2 1.2 `
-  --reference-sin2-theta14 0.041666666666666664 `
-  --reference-sin2-theta24 0.018 `
+python scripts/scan.py `
+  --mode appearance-profile `
   --delta-m2-grid-eV2 0.1,0.3,1.0,3.0,10.0 `
   --sin2-2theta-mue-grid 0.0001,0.001,0.01,0.1
 ```
 
-每个点固定 `sin²(2θμe)=4 sin²θ14 (1-sin²θ14) sin²θ24`，在 `0≤sin²θ14,sin²θ24≤1` 的物理域内 profile 剩余自由度；不会把 `θ24=0` 或 `θ14=θ24` 当成默认假设。
+其他模式：
 
-## 为什么不写成一个大文件
+- `--mode prefit`：同时拟合 `delta_m2_41_eV2`、`sin2_theta14`、`sin2_theta24`；
+- `--mode s14-profile`：固定 `(delta_m2_41_eV2, sin2_theta14)`，profile `sin2_theta24`；
+- `--mode appearance-profile`：固定 `(delta_m2_41_eV2, sin2_2theta_mue)`，在精确物理约束下 profile `sin2_theta14` 并推导 `sin2_theta24`。
 
-大文件会把四种不同的错误混在一起：参数单位错误、振荡公式错误、bin 顺序错误和 χ²/优化错误。这里把它们拆开：
+参考点在 `configs/bnb_3plus1_reference.yaml` 中调整。参数只使用：
 
-- `parameters.py`：物理参数和单位；
-- `models/three_plus_one.py`：仅振荡概率；
-- `templates.py`：探测器折叠模板的唯一物理定义；
-- `published_inputs.py`：公开数据与 bin 映射；
-- `covariance.py`：统计协方差；
-- `prediction.py`：模板对公开标称预测的严格闭合；
-- `fitting.py`：全局预拟合和条件 profile；
-- `workflows.py`：把已验证的输入组合为可运行分析；
-- `tests/`：每个边界的失败测试。
+```text
+delta_m2_41_eV2    Δm²41，单位 eV²
+sin2_theta14       sin²θ14
+sin2_theta24       sin²θ24
+```
 
-这使未来 1+3+1 或其他实验的加入不需要重写、复制或污染已验证的 BNB 3+1 核心。
+BNB 基线也在同一配置中显式设为 `baseline_km: 0.4685`。这是论文给出的 BNB 靶到 MicroBooNE 探测器距离；当前 kernel 使用单基线近似，不冒充合作组逐事件产生点分布。
 
-完整规则见 [AGENT.md](AGENT.md) 和 [架构说明](docs/ARCHITECTURE.md)。
+## 简化调用链
+
+```text
+scripts/check.py                 一键检查全部输入与闭合
+scripts/build_anchor.py          公开预测 + 背景 + 束流 + Reco → 文本 kernel
+scripts/scan.py                  kernel + 数据 + 协方差 + 3+1 概率 → profile CSV
+```
+
+内部核心按职责保留：
+
+```text
+parameters.py                    参数定义
+models/three_plus_one.py         论文短基线极限下的精确 3+1 概率
+templates.py                     CSV/JSON kernel 读取与预测
+covariance.py                    CSV/JSON 协方差读取及 Cholesky χ²
+fitting.py                       prefit 与 profile
+```
+
+## HEPData 三个数据块
+
+`HEPData-ins3088922-v1-Unconstrained_14_channels.csv` 中：
+
+```text
+Data                  只进入 χ²
+Background            在参考重加权中冻结并只加一次
+Signal + Background   参考总预测
+Signal                 由 (Signal + Background) - Background 得到
+```
+
+`plot_published_bnb.py` 直接画 `Background` 和 `Signal + Background` 两条线，没有执行 `total + background`。
+
+## 60 true bins 与 26 reco bins
+
+不把 26-bin reco 谱插值成 60-bin true 谱，也不压缩 true-energy 轴。项目保留：
+
+```text
+60 true-energy bins：0--3 GeV，每 bin 0.05 GeV
+26 reco bins：25 个 0.1 GeV bin + 2.5--3.0 GeV overflow
+Reco 矩阵：26 x 60，R(reco|true)
+```
+
+`build_anchor.py` 在每个公开 reco bin 中，用 `Reco × 束流 × 参考概率` 分配 true-energy 权重，并用公开 Signal 强制归一化。因此参考点逐 bin 精确闭合，又不把 reco energy 冒充 true energy。
+
+## 可见数据位置
+
+```text
+data/raw/                 HEPData CSV/YAML 原始输入
+data/inputs/              可见 BNB flux CSV 与来源 JSON
+data/derived/             可见 Reco CSV、协方差 CSV/JSON
+data/anchor/              八个过程 kernel CSV、背景 CSV、闭合 CSV、metadata JSON
+```
+
+活跃分析不读取 NPZ、pickle 或其他二进制数值容器。PNG 只作为可见图片输出，不作为拟合输入。
+
+## 科学边界
+
+当前结果是“BNB 四通道、公开参考预测锚定、固定背景和固定参考协方差”的经验重加权分析。metadata 明确记录了以下假设：未知截面与效率并未被反演出来，而是假定其参考加权效应可由 `Reco×flux` 真能量形状先验和每个 reco bin 的一个比例因子吸收；同一选择通道内中微子和反中微子共享该有效比例；2022 Reco 作为 true-energy 分配先验；HEPData 参考预测被指定给配置中的 3+1 参考点。
+
+配置中的 `1.2 eV², sin²θ24=0.018` 是论文图 1 的示意点，不是论文 best-fit。`sin²θ14=0.003/(4×0.018)=1/24` 来自小混合转换；在代码使用的精确关系 `4 s14(1-s14)s24` 下，其振幅是 `0.002875`。两者不会再被混写成同一个精确数值。
+
+这里的“固定背景”只表示 HEPData `Background` 类别在本近似中保持不变，不声称该类别内每一个中微子成分在物理上都不会振荡。论文正式限制还使用参数相关协方差、全部 14 通道和伪实验 `CLs`；本项目当前输出是 BNB-only 的诊断性 profile `Δχ²`，不能标成论文 95% 排除线。
+
+未来 1+3+1 只替换概率模型，必须在第二惰性态混合为零时逐点回到 3+1；数据、kernel、背景、Reco、协方差与 χ²不得复制或改变。

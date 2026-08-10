@@ -44,7 +44,7 @@ def test_fixed_appearance_amplitude_profiles_only_the_physical_curve() -> None:
     )
     point = result.best_fit.parameters
     assert point.sin2_2theta_mue_exact == pytest.approx(target_amplitude, abs=1e-12)
-    assert 0.0 <= point.sin2_theta14 <= 1.0
+    assert 0.0 <= point.sin2_theta14 <= 0.5
     assert 0.0 <= point.sin2_theta24 <= 1.0
 
 
@@ -52,3 +52,8 @@ def test_appearance_amplitude_grid_retains_both_scan_coordinates() -> None:
     results = profile_appearance_amplitude_grid(_objective, [0.8, 1.2], [0.01], seed=4)
     assert [item.delta_m2_41_eV2 for item in results] == [0.8, 1.2]
     assert all(item.sin2_2theta_mue == 0.01 for item in results)
+
+
+def test_profile_rejects_the_duplicate_large_s14_branch() -> None:
+    with pytest.raises(ValueError, match="small-mixing branch"):
+        profile_three_plus_one(_objective, {"sin2_theta14": 0.8})

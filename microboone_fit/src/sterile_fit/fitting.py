@@ -12,6 +12,10 @@ from scipy.optimize import differential_evolution
 from .parameters import ThreePlusOneParameters
 Objective = Callable[[ThreePlusOneParameters], float]
 PARAMETER_NAMES = ("delta_m2_41_eV2", "sin2_theta14", "sin2_theta24")
+PROFILE_MIXING_BOUNDS = {
+    "sin2_theta14": (0.0, 0.5),
+    "sin2_theta24": (0.0, 1.0),
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,6 +56,8 @@ def _validate_fixed_parameters(fixed_parameters: Mapping[str, float]) -> None:
         "sin2_theta24": fixed_parameters.get("sin2_theta24", 0.0),
     }
     ThreePlusOneParameters(**values)
+    if values["sin2_theta14"] > PROFILE_MIXING_BOUNDS["sin2_theta14"][1]:
+        raise ValueError("3+1 profile uses the conventional small-mixing branch sin2_theta14 <= 0.5")
 
 
 def profile_three_plus_one(
@@ -86,7 +92,7 @@ def profile_three_plus_one(
         return ProfileResult(fixed, FitPoint(point, float(objective(point))), "no free parameters")
 
     bounds = [
-        (np.log10(lower), np.log10(upper)) if name == "delta_m2_41_eV2" else (0.0, 1.0)
+        (np.log10(lower), np.log10(upper)) if name == "delta_m2_41_eV2" else PROFILE_MIXING_BOUNDS[name]
         for name in free_names
     ]
     result = differential_evolution(
@@ -123,18 +129,24 @@ def profile_s14_s24_at_fixed_sin2_2theta_mue(
     where ``s14 = sin²θ14`` and ``s24 = sin²θ24``.  Thus a non-zero fixed
     appearance amplitude leaves one physical degree of freedom, ``s14``;
     ``s24`` is derived rather than independently minimized.  The optimiser is
-    restricted to the exact unitary domain ``0 <= s14,s24 <= 1``.  This is a
-    profile likelihood, not the historical arbitrary slice ``θ14 = θ24``.
+    restricted to ``0 <= s14 <= 0.5`` and ``0 <= s24 <= 1``.  The s14 bound
+    selects the conventional branch used when expressing the fit through
+    sin²(2θee); the discarded branch duplicates that disappearance amplitude.
+    This is a profile likelihood, not the historical arbitrary slice
+    ``θ14 = θ24``.
     """
     # Reuse the public parameter validation for the mass-squared coordinate.
     ThreePlusOneParameters(delta_m2_41_eV2, 0.0, 0.0)
     if not np.isfinite(sin2_2theta_mue) or not 0.0 <= sin2_2theta_mue <= 1.0:
         raise ValueError("sin2_2theta_mue must be in [0, 1]")
 
-    def minimise_on_branch(make_parameters: Callable[[float], ThreePlusOneParameters]) -> tuple[FitPoint, str]:
+    def minimise_on_branch(
+        make_parameters: Callable[[float], ThreePlusOneParameters],
+        bounds: tuple[float, float],
+    ) -> tuple[FitPoint, str]:
         result = differential_evolution(
             lambda vector: objective(make_parameters(float(vector[0]))),
-            bounds=[(0.0, 1.0)],
+            bounds=[bounds],
             seed=seed,
             polish=True,
             workers=1,
@@ -145,21 +157,34 @@ def profile_s14_s24_at_fixed_sin2_2theta_mue(
         return FitPoint(make_parameters(float(result.x[0])), float(result.fun)), result.message
 
     if sin2_2theta_mue == 0.0:
-        # The zero-amplitude boundary is a union of physical branches.  Search
-        # all branches admitted by the declared [0, 1] coordinate domain rather
-        # than silently choosing theta24=0.
+        # The zero-amplitude boundary is a union of the two branches admitted
+        # by the conventional s14 <= 0.5 parameterization.
         candidates = (
-            minimise_on_branch(lambda s14: ThreePlusOneParameters(delta_m2_41_eV2, s14, 0.0)),
-            minimise_on_branch(lambda s24: ThreePlusOneParameters(delta_m2_41_eV2, 0.0, s24)),
-            minimise_on_branch(lambda s24: ThreePlusOneParameters(delta_m2_41_eV2, 1.0, s24)),
+            minimise_on_branch(
+                lambda s14: ThreePlusOneParameters(delta_m2_41_eV2, s14, 0.0),
+                PROFILE_MIXING_BOUNDS["sin2_theta14"],
+            ),
+            minimise_on_branch(
+                lambda s24: ThreePlusOneParameters(delta_m2_41_eV2, 0.0, s24),
+                PROFILE_MIXING_BOUNDS["sin2_theta24"],
+            ),
         )
         best_point, message = min(candidates, key=lambda item: item[0].chi2)
         return AppearanceAmplitudeProfileResult(delta_m2_41_eV2, sin2_2theta_mue, best_point, f"zero-amplitude boundary; {message}")
 
+    if sin2_2theta_mue == 1.0:
+        point = ThreePlusOneParameters(delta_m2_41_eV2, 0.5, 1.0)
+        return AppearanceAmplitudeProfileResult(
+            delta_m2_41_eV2,
+            sin2_2theta_mue,
+            FitPoint(point, float(objective(point))),
+            "unique unit-amplitude boundary point",
+        )
+
     # s24 <= 1 implies 4*s14*(1-s14) >= sin2_2theta_mue.
     root = np.sqrt(1.0 - sin2_2theta_mue)
     s14_lower = (1.0 - root) / 2.0
-    s14_upper = (1.0 + root) / 2.0
+    s14_upper = PROFILE_MIXING_BOUNDS["sin2_theta14"][1]
 
     def constrained_parameters(s14: float) -> ThreePlusOneParameters:
         denominator = 4.0 * s14 * (1.0 - s14)

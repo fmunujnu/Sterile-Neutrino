@@ -40,9 +40,11 @@ class ThreePlusOneVacuumModel:
             @ _rotation(size, 0, 3, parameters.theta14_rad)
         )
         self.mixing_matrix = sterile_rotations @ _standard_pmns_embedded(size)
-        self.mass_squared_eV2 = np.array(
-            [0.0, 7.5e-5, 2.5e-3, parameters.delta_m2_41_eV2], dtype=float
-        )
+        # The published short-baseline equations neglect solar and atmospheric
+        # phases, so nu1, nu2 and nu3 are exactly degenerate here.  Retaining
+        # their splittings would introduce an effect absent from the target
+        # analysis, especially in the lowest true-energy bins.
+        self.mass_squared_eV2 = np.array([0.0, 0.0, 0.0, parameters.delta_m2_41_eV2], dtype=float)
 
     def probability(
         self,

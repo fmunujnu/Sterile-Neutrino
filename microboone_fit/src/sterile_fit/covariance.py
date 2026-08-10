@@ -4,10 +4,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from hashlib import sha256
+import json
 from pathlib import Path
 
 import numpy as np
 from numpy.typing import NDArray
+
+
+BNB_COVARIANCE_SHAPE = [104, 104]
+BNB_COVARIANCE_ORDER = "nue_cc_fc,nue_cc_pc,numu_cc_fc,numu_cc_pc; 26 reconstructed bins each"
 
 
 def symmetric_error_variance(
@@ -66,39 +71,50 @@ class DeclaredTotalCovariance:
             raise ValueError("reference_prediction_sha256 must be a SHA-256 hexadecimal digest")
         if not self.provenance.strip():
             raise ValueError("provenance must describe how the covariance was produced")
+        if not np.all(np.isfinite(self.covariance)):
+            raise ValueError("total covariance must contain only finite values")
         if not np.allclose(self.covariance, self.covariance.T, rtol=1e-10, atol=1e-12):
             raise ValueError("total covariance must be symmetric")
 
 
 def load_declared_total_covariance(path: Path) -> DeclaredTotalCovariance:
-    """Load an externally prepared total covariance for a profile run.
+    """Load a human-readable covariance CSV and adjacent JSON metadata.
 
-    The archive must contain its reference-prediction hash and provenance in
-    addition to the covariance and statistical prescription. This binds a
-    fixed covariance to the spectrum against which it was constructed.
+    For ``covariance.csv`` the metadata file is
+    ``covariance.metadata.json``.  No binary archive is accepted.
     """
-    with np.load(path, allow_pickle=False) as archive:
-        required = {
-            "covariance",
-            "statistical_treatment",
-            "parameter_dependence",
-            "reference_prediction_sha256",
-            "provenance",
-        }
-        missing = required.difference(archive.files)
-        if missing:
-            raise ValueError(f"total covariance archive is missing: {sorted(missing)}")
-        covariance = np.asarray(archive["covariance"], dtype=float)
-        treatment = str(np.asarray(archive["statistical_treatment"]).item())
-        dependence = str(np.asarray(archive["parameter_dependence"]).item())
-        reference_hash = str(np.asarray(archive["reference_prediction_sha256"]).item())
-        provenance = str(np.asarray(archive["provenance"]).item())
+    path = Path(path)
+    if path.suffix.lower() != ".csv":
+        raise ValueError("total covariance must be supplied as a visible .csv file")
+    metadata_path = path.with_suffix(".metadata.json")
+    if not path.is_file() or not metadata_path.is_file():
+        raise FileNotFoundError(f"covariance CSV and metadata JSON are required: {path}, {metadata_path}")
+    covariance = np.loadtxt(path, delimiter=",", dtype=float)
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    required = {
+        "shape",
+        "row_order",
+        "column_order",
+        "statistical_treatment",
+        "parameter_dependence",
+        "reference_prediction_sha256",
+        "provenance",
+    }
+    missing = required.difference(metadata)
+    if missing:
+        raise ValueError(f"total covariance metadata is missing: {sorted(missing)}")
+    if metadata["shape"] != BNB_COVARIANCE_SHAPE:
+        raise ValueError(f"total covariance metadata shape must be {BNB_COVARIANCE_SHAPE}")
+    if metadata["row_order"] != BNB_COVARIANCE_ORDER:
+        raise ValueError("total covariance row_order does not match the active BNB channel/bin order")
+    if metadata["column_order"] != "same as row_order":
+        raise ValueError("total covariance column_order must be declared as identical to row_order")
     return DeclaredTotalCovariance(
         covariance=covariance,
-        statistical_treatment=treatment,
-        parameter_dependence=dependence,
-        reference_prediction_sha256=reference_hash,
-        provenance=provenance,
+        statistical_treatment=str(metadata["statistical_treatment"]),
+        parameter_dependence=str(metadata["parameter_dependence"]),
+        reference_prediction_sha256=str(metadata["reference_prediction_sha256"]),
+        provenance=str(metadata["provenance"]),
     )
 
 

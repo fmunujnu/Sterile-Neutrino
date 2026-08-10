@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import argparse
+from hashlib import sha256
+import json
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 
 from sterile_fit.binning import BNB_FOUR_CHANNELS
-from sterile_fit.published_inputs import load_bnb_four_channel_inputs
+from sterile_fit.published_inputs import DEFAULT_SPECTRUM_PATH, load_bnb_four_channel_inputs
 
 
 def main() -> None:
@@ -21,6 +24,7 @@ def main() -> None:
     edges_GeV = np.append(np.arange(0.0, 2.6, 0.1), 3.0)
     centres_GeV = (edges_GeV[:-1] + edges_GeV[1:]) / 2.0
     figure, axes = plt.subplots(2, 2, figsize=(13, 9), sharex=True)
+    audit_rows: list[dict[str, object]] = []
     for axis, channel in zip(axes.flat, BNB_FOUR_CHANNELS, strict=True):
         start, stop = channel.first_global_bin, channel.stop_global_bin
         observed = inputs.observed_counts[start:stop]
@@ -36,10 +40,46 @@ def main() -> None:
         axis.set_ylabel("Counts per bin")
         axis.grid(alpha=0.25)
         axis.legend(fontsize=8)
-    figure.suptitle("MicroBooNE BNB: public four-channel input reproduction")
+        for local_bin in range(26):
+            audit_rows.append({
+                "channel": channel.identifier,
+                "channel_reco_bin": local_bin,
+                "reco_energy_low_GeV": edges_GeV[local_bin],
+                "reco_energy_high_GeV": edges_GeV[local_bin + 1],
+                "is_overflow_bin": local_bin == 25,
+                "plotted_data_counts": observed[local_bin],
+                "plotted_background_counts": background[local_bin],
+                "plotted_signal_plus_background_counts": total[local_bin],
+                "derived_signal_counts": total[local_bin] - background[local_bin],
+            })
+    figure.suptitle("MicroBooNE BNB: public four-channel input reproduction\n(last bin is the released overflow bin)")
     figure.tight_layout()
     arguments.output.parent.mkdir(parents=True, exist_ok=True)
     figure.savefig(arguments.output, dpi=180, bbox_inches="tight")
+    audit_path = arguments.output.with_suffix(".csv")
+    pd.DataFrame(audit_rows).to_csv(
+        audit_path,
+        index=False,
+        float_format="%.17g",
+    )
+    spectrum_source = DEFAULT_SPECTRUM_PATH
+    metadata = {
+        "plot_semantics": {
+            "data": "HEPData Data",
+            "background": "HEPData Background, plotted separately",
+            "signal_plus_background": "HEPData Signal + Background, used directly; Background is not added again",
+            "derived_signal": "Signal + Background minus Background; audit table only",
+        },
+        "binning": "25 bins of width 0.1 GeV from 0 to 2.5 GeV, followed by the released overflow bin displayed to 3.0 GeV",
+        "spectrum_source": str(spectrum_source),
+        "spectrum_source_sha256": sha256(spectrum_source.read_bytes()).hexdigest(),
+        "audit_table": str(audit_path),
+        "audit_table_sha256": sha256(audit_path.read_bytes()).hexdigest(),
+    }
+    arguments.output.with_suffix(".metadata.json").write_text(
+        json.dumps(metadata, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
 
 
 if __name__ == "__main__":

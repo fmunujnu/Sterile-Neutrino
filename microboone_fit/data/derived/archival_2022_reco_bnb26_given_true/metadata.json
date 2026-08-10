@@ -1,0 +1,10 @@
+{
+  "format": "conditional_probability_bnb26_reco_bin_given_true_bin",
+  "shape": [
+    26,
+    60
+  ],
+  "true_energy_binning": "0 to 3 GeV in 60 bins of 0.05 GeV",
+  "reconstructed_energy_binning": "25 bins of 0.1 GeV below 2.5 GeV plus [2.5,3.0] GeV overflow",
+  "normalization": "each nonzero true-energy column sums to one; zero columns remain zero"
+}

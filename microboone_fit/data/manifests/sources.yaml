@@ -7,7 +7,7 @@ published_data:
   covariance_sha256: "76278A1435260C7FF2019B82F137CF724450C294304960DF26E776E8F6948877"
   reference_definition: "Published unconstrained Signal + Background prediction"
 status:
-  detector_kernel: "not yet available; active profile requires declared detector-folded templates"
+  detector_kernel: "visible empirical reference-ratio kernel available under data/anchor/bnb_reference_reweight_kernel"
   numi: "excluded from active likelihood"
   one_plus_three_plus_one: "future interface only"
 archival_response_matrices:
@@ -22,3 +22,10 @@ archival_response_matrices:
       sha256: "F91C55D0873713913E6D1F2548BC63587EDEB3FDCD64E8F88A48FB64525E0B47"
     - path: "data/raw/hepdata_microboone_2022_response/HEPData-ins1953539-v3-nu_muCC_PC_Energy_Resolution.yaml"
       sha256: "A233FFD6F109D6F4C0922F87CB2FC68F27EE09D3AA7BC3C388B34BF253E2668D"
+visible_flux_conversion:
+  file: "data/inputs/bnb_flux.csv"
+  metadata: "data/inputs/bnb_flux.metadata.json"
+  method: "syntax-only extraction of four 60-bin historical arrays; frozen Python was not imported or executed"
+reference_kernel:
+  directory: "data/anchor/bnb_reference_reweight_kernel"
+  construction: "per-reconstructed-bin reference-ratio kernel, exactly closing HEPData Signal + Background"

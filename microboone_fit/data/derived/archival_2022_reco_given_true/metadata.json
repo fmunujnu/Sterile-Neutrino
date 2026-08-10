@@ -1,0 +1,9 @@
+{
+  "format": "conditional_probability_reco_bin_given_true_bin",
+  "shape": [
+    60,
+    60
+  ],
+  "normalization": "each nonzero true-energy column sums to one; zero columns remain zero",
+  "scope": "archival 2022 response; used only as the declared migration prior"
+}

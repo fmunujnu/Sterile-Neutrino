@@ -1,0 +1,12 @@
+{
+  "shape": [
+    104,
+    104
+  ],
+  "row_order": "nue_cc_fc,nue_cc_pc,numu_cc_fc,numu_cc_pc; 26 reconstructed bins each",
+  "column_order": "same as row_order",
+  "statistical_treatment": "Pearson data statistic: variance_i = P_i",
+  "parameter_dependence": "fixed_at_reference",
+  "reference_prediction_sha256": "f777f5bd2048c69702b741846baa07c9eb424f08ea39d8586a657e220b03a7de",
+  "provenance": "HEPData 10.17182/hepdata.166435.v1 14-channel covariance, first four BNB channels; data statistics constructed at the released Signal + Background reference; Pearson selected to match the 2025 paper Methods"
+}
