@@ -19,9 +19,18 @@ from sterile_fit.fitting import (
     profile_appearance_amplitude_grid,
     profile_electron_disappearance_grid,
     profile_grid,
+    profile_s14_s24_at_fixed_sin2_2theta_ee,
+    profile_s14_s24_at_fixed_sin2_2theta_mue,
+    profile_three_plus_one,
 )
 from sterile_fit.parameters import ThreePlusOneParameters
-from sterile_fit.statistics import GaussianHypothesis, asymptotic_cls
+from sterile_fit.statistics import (
+    GaussianHypothesis,
+    asymptotic_cls,
+    prepare_fixed_hypothesis_chi2,
+    toy_cls,
+)
+from sterile_fit.covariance import solve_quadratic_form
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -74,6 +83,62 @@ def _hypothesis_pairs(analysis, null_parameters, tested_parameters):
     return pairs
 
 
+def _objective_for_toy(analysis, toy_dataset):
+    """Build the same prediction-scaled chi2 with pseudo-data replacing data."""
+    if len(toy_dataset) != len(analysis.experiments):
+        raise ValueError("toy dataset does not match the selected analysis")
+
+    def objective(parameters: ThreePlusOneParameters) -> float:
+        total = 0.0
+        for experiment, observation in zip(
+            analysis.experiments, toy_dataset, strict=True
+        ):
+            prediction = experiment.predict_counts(parameters)
+            covariance = experiment.covariance_for_prediction(prediction)
+            total += solve_quadratic_form(observation - prediction, covariance)
+        return float(total)
+
+    return objective
+
+
+def _profile_toy_at_scan_point(
+    analysis,
+    toy_dataset,
+    *,
+    mode: str,
+    tested_parameters: ThreePlusOneParameters,
+):
+    """Repeat the real-data profile definition for one pseudo-experiment."""
+    objective = _objective_for_toy(analysis, toy_dataset)
+    if mode == "appearance-profile":
+        return profile_s14_s24_at_fixed_sin2_2theta_mue(
+            objective,
+            delta_m2_41_eV2=tested_parameters.delta_m2_41_eV2,
+            sin2_2theta_mue=tested_parameters.sin2_2theta_mue_exact,
+        ).best_fit
+    if mode == "electron-disappearance-profile":
+        return profile_s14_s24_at_fixed_sin2_2theta_ee(
+            objective,
+            delta_m2_41_eV2=tested_parameters.delta_m2_41_eV2,
+            sin2_2theta_ee=tested_parameters.sin2_2theta_ee_exact,
+        ).best_fit
+    if mode == "s14-profile":
+        return profile_three_plus_one(
+            objective,
+            {
+                "delta_m2_41_eV2": tested_parameters.delta_m2_41_eV2,
+                "sin2_theta14": tested_parameters.sin2_theta14,
+            },
+        ).best_fit
+    raise ValueError(f"Toy MC is not defined for scan mode {mode!r}")
+
+
+def _stable_point_seed(base_seed: int, point_index: int) -> int:
+    """Derive a platform-stable independent random stream per scan point."""
+    sequence = np.random.SeedSequence([base_seed, point_index])
+    return int(sequence.generate_state(1, dtype=np.uint64)[0])
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -100,6 +165,36 @@ def main() -> None:
     parser.add_argument("--sin2-2theta-mue-max", type=float, default=1.0)
     parser.add_argument("--sin2-2theta-ee-min", type=float, default=1e-5)
     parser.add_argument("--sin2-2theta-ee-max", type=float, default=1.0)
+    parser.add_argument(
+        "--cls-calibration",
+        choices=("analytic", "toy"),
+        default="analytic",
+        help="analytic is a fast diagnostic; toy repeats the pointwise profile for every pseudo-experiment",
+    )
+    parser.add_argument(
+        "--number-of-toys",
+        type=int,
+        default=1000,
+        help="pseudo-experiments generated under each of 3nu and tested 4nu at every scan point",
+    )
+    parser.add_argument("--toy-seed", type=int, default=20250821)
+    parser.add_argument(
+        "--toy-workers",
+        type=int,
+        default=1,
+        help="parallel Toy profiles in shared-memory threads; 1 is the deterministic conservative default",
+    )
+    parser.add_argument(
+        "--toy-batch-size",
+        type=int,
+        default=256,
+        help="maximum pseudo-experiments held in memory while retaining the same seeded random stream",
+    )
+    parser.add_argument(
+        "--store-toy-distributions",
+        action="store_true",
+        help="write every generated test statistic as visible per-point CSV files",
+    )
     parser.add_argument("--output-directory", type=Path)
     arguments = parser.parse_args()
     selection = load_analysis_selection(arguments.analysis_config, repository_root=ROOT)
@@ -116,6 +211,16 @@ def main() -> None:
     objective = analysis.objective.chi2
     if arguments.grid_points < 8:
         raise ValueError("--grid-points must be at least 8 for a resolved two-dimensional scan")
+    if arguments.cls_calibration == "toy" and arguments.number_of_toys < 2:
+        raise ValueError("--number-of-toys must be at least 2 per hypothesis")
+    if arguments.cls_calibration == "toy" and arguments.toy_workers < 1:
+        raise ValueError("--toy-workers must be at least 1")
+    if arguments.cls_calibration == "toy" and arguments.toy_batch_size < 1:
+        raise ValueError("--toy-batch-size must be at least 1")
+    if arguments.mode == "prefit" and arguments.cls_calibration == "toy":
+        raise ValueError("Toy CLs calibrates scan points and is not defined for --mode prefit")
+    if arguments.store_toy_distributions and arguments.cls_calibration != "toy":
+        raise ValueError("--store-toy-distributions requires --cls-calibration toy")
     delta_m2_grid = arguments.delta_m2_grid_eV2 or np.geomspace(
         arguments.delta_m2_min_eV2,
         arguments.delta_m2_max_eV2,
@@ -250,20 +355,105 @@ def main() -> None:
     null_parameters = ThreePlusOneParameters(1.0, 0.0, 0.0)
     chi2_3nu = analysis.objective.chi2(null_parameters)
     if arguments.mode != "prefit":
-        cls_rows = []
-        for tested_parameters, chi2_4nu in zip(row_parameters, result_table["chi2"], strict=True):
-            comparison = asymptotic_cls(
-                float(chi2_4nu) - chi2_3nu,
-                _hypothesis_pairs(analysis, null_parameters, tested_parameters),
-            )
-            cls_rows.append(comparison)
         result_table["chi2_3nu"] = chi2_3nu
-        result_table["test_statistic_chi2_4nu_minus_chi2_3nu"] = [
-            item.test_statistic for item in cls_rows
-        ]
-        result_table["p_value_4nu_asymptotic"] = [item.p_value_4nu for item in cls_rows]
-        result_table["p_value_3nu_asymptotic"] = [item.p_value_3nu for item in cls_rows]
-        result_table["cls_asymptotic"] = [item.cls for item in cls_rows]
+        result_table["test_statistic_chi2_4nu_minus_chi2_3nu"] = (
+            result_table["chi2"] - chi2_3nu
+        )
+        if arguments.cls_calibration == "analytic":
+            cls_rows = []
+            for tested_parameters, observed_test_statistic in zip(
+                row_parameters,
+                result_table["test_statistic_chi2_4nu_minus_chi2_3nu"],
+                strict=True,
+            ):
+                cls_rows.append(asymptotic_cls(
+                    float(observed_test_statistic),
+                    _hypothesis_pairs(analysis, null_parameters, tested_parameters),
+                ))
+            result_table["p_value_4nu_asymptotic"] = [item.p_value_4nu for item in cls_rows]
+            result_table["p_value_3nu_asymptotic"] = [item.p_value_3nu for item in cls_rows]
+            result_table["cls_asymptotic"] = [item.cls for item in cls_rows]
+            cls_column = "cls_asymptotic"
+        else:
+            toy_summary_rows = []
+            raw_distribution_directory = output_directory / "toy_distributions"
+            if arguments.store_toy_distributions:
+                raw_distribution_directory.mkdir(parents=True, exist_ok=False)
+            for point_index, (tested_parameters, observed_test_statistic) in enumerate(zip(
+                row_parameters,
+                result_table["test_statistic_chi2_4nu_minus_chi2_3nu"],
+                strict=True,
+            )):
+                pairs = _hypothesis_pairs(analysis, null_parameters, tested_parameters)
+                null_hypotheses = tuple(pair[0] for pair in pairs)
+                tested_hypotheses = tuple(pair[1] for pair in pairs)
+                null_chi2 = prepare_fixed_hypothesis_chi2(null_hypotheses)
+
+                def profiled_test_statistic(toy_dataset):
+                    profiled_4nu = _profile_toy_at_scan_point(
+                        analysis,
+                        toy_dataset,
+                        mode=arguments.mode,
+                        tested_parameters=tested_parameters,
+                    )
+                    return profiled_4nu.chi2 - null_chi2(toy_dataset)
+
+                comparison = toy_cls(
+                    float(observed_test_statistic),
+                    null_hypotheses,
+                    tested_hypotheses,
+                    profiled_test_statistic,
+                    number_of_toys=arguments.number_of_toys,
+                    seed=_stable_point_seed(arguments.toy_seed, point_index),
+                    workers=arguments.toy_workers,
+                    batch_size=arguments.toy_batch_size,
+                )
+                if arguments.store_toy_distributions:
+                    pd.DataFrame({
+                        "test_statistic_under_3nu": comparison.test_statistics_under_3nu,
+                        "test_statistic_under_4nu": comparison.test_statistics_under_4nu,
+                    }).to_csv(
+                        raw_distribution_directory / f"point_{point_index:06d}.csv",
+                        index=False,
+                        float_format="%.17g",
+                    )
+                print(
+                    f"Toy CLs point {point_index + 1}/{len(row_parameters)}: "
+                    f"CLs={comparison.cls:.6g}"
+                )
+                summary = {
+                    "toy_count_per_hypothesis": comparison.number_of_toys_per_hypothesis,
+                    "right_tail_count_under_4nu": comparison.right_tail_count_under_4nu,
+                    "right_tail_count_under_3nu": comparison.right_tail_count_under_3nu,
+                    "p_value_4nu_toy": comparison.p_value_4nu,
+                    "p_value_3nu_toy": comparison.p_value_3nu,
+                    "cls_toy": comparison.cls,
+                    "p_value_4nu_toy_standard_error": comparison.p_value_4nu_standard_error,
+                    "p_value_3nu_toy_standard_error": comparison.p_value_3nu_standard_error,
+                    "cls_toy_standard_error_delta_method": comparison.cls_standard_error_delta_method,
+                }
+                for hypothesis_name, values in (
+                    ("3nu", comparison.test_statistics_under_3nu),
+                    ("4nu", comparison.test_statistics_under_4nu),
+                ):
+                    summary[f"test_statistic_mean_under_{hypothesis_name}"] = float(
+                        np.mean(values)
+                    )
+                    summary[f"test_statistic_std_under_{hypothesis_name}"] = float(
+                        np.std(values, ddof=1)
+                    )
+                    for quantile in (0.05, 0.5, 0.95):
+                        suffix = str(quantile).replace(".", "p")
+                        summary[
+                            f"test_statistic_quantile_{suffix}_under_{hypothesis_name}"
+                        ] = float(np.quantile(values, quantile))
+                toy_summary_rows.append(summary)
+            toy_summary_table = pd.DataFrame(toy_summary_rows)
+            if len(toy_summary_table) != len(result_table):
+                raise RuntimeError("Toy summary rows do not match profile scan rows")
+            for column in toy_summary_table:
+                result_table[column] = toy_summary_table[column].to_numpy()
+            cls_column = "cls_toy"
     result_table.to_csv(output_directory / "result.csv", index=False, float_format="%.17g")
     if arguments.mode != "prefit":
         x_name = {
@@ -279,7 +469,7 @@ def main() -> None:
         y_edges = _log_cell_edges(y_values)
         figure, axis = plt.subplots(figsize=(7.5, 5.8))
         cls_surface = result_table.pivot(
-            index="fixed_delta_m2_41_eV2", columns=x_name, values="cls_asymptotic"
+            index="fixed_delta_m2_41_eV2", columns=x_name, values=cls_column
         ).to_numpy(dtype=float)
         colour = axis.pcolormesh(
             x_edges,
@@ -301,7 +491,11 @@ def main() -> None:
                 linewidths=2.0,
             )
             axis.legend(
-                handles=[Line2D([0], [0], color="tab:red", linewidth=2.0, label=r"95% $CL_s$ (analytic Gaussian approximation)")],
+                handles=[Line2D([0], [0], color="tab:red", linewidth=2.0, label=(
+                    r"95% $CL_s$ (profiled Toy MC)"
+                    if arguments.cls_calibration == "toy"
+                    else r"95% $CL_s$ (analytic Gaussian approximation)"
+                ))],
                 loc="best",
                 fontsize=8,
             )
@@ -318,7 +512,10 @@ def main() -> None:
             if analysis.analysis_name == "microboone_bnb_numi_joint_diagnostic"
             else analysis.analysis_name.replace("_", " ")
         )
-        axis.set_title(rf"$3+1$ {analysis_label}: profiled analytic $CL_s$")
+        calibration_title = (
+            "profiled Toy-MC" if arguments.cls_calibration == "toy" else "profiled analytic"
+        )
+        axis.set_title(rf"$3+1$ {analysis_label}: {calibration_title} $CL_s$")
         figure.colorbar(colour, ax=axis, label=r"$CL_s$")
         figure.tight_layout()
         figure.savefig(output_directory / "profile.png", dpi=180, bbox_inches="tight")
@@ -371,17 +568,50 @@ def main() -> None:
             "fig3b_profile": "fix delta_m2_41 and exact sin2_2theta_ee; profile s24 on both physical s14 branches",
         },
         "grid_note": "the default is a resolved logarithmic grid; increase --grid-points for convergence studies",
-        "plot_colour_note": "the heatmap and colour bar show analytic CLs from 0 to 1; the red contour is CLs=0.05",
+        "plot_colour_note": f"the heatmap and colour bar show {arguments.cls_calibration} CLs from 0 to 1; the red contour is CLs=0.05",
         "statistical_inference": {
             "test_statistic": "chi2_4nu - chi2_3nu",
             "decision": "exclude where CLs = p_4nu / p_3nu <= 0.05",
-            "calibration": "analytic moment-matched Gaussian approximation; no Toy MC",
+            "calibration": (
+                "empirical Toy MC under both hypotheses; no assumed test-statistic distribution"
+                if arguments.cls_calibration == "toy"
+                else "analytic moment-matched Gaussian approximation; no Toy MC"
+            ),
             "tail": "right-tailed under both fixed hypotheses",
-            "profile_treatment": "the observed-data profiled 4nu prediction is held fixed while calibrating each point",
-            "paper_difference": "the paper obtains both p-values from pseudo-experiments and repeats its full statistical procedure; this interim contour is not toy-calibrated",
+            "profile_treatment": (
+                "every pseudo-experiment repeats the same pointwise physical profile as the observed data"
+                if arguments.cls_calibration == "toy"
+                else "the observed-data profiled 4nu prediction is held fixed while calibrating each point"
+            ),
+            "toy_generator_nuisance_treatment": (
+                "plug-in at the observed-data profiled 4nu point"
+                if arguments.cls_calibration == "toy"
+                else None
+            ),
+            "toy_fluctuation_model": (
+                "multivariate Gaussian using the complete prediction-dependent covariance; no clipping and no extra Poisson draw"
+                if arguments.cls_calibration == "toy"
+                else None
+            ),
+            "toy_count_per_hypothesis_per_point": (
+                arguments.number_of_toys if arguments.cls_calibration == "toy" else None
+            ),
+            "toy_seed": arguments.toy_seed if arguments.cls_calibration == "toy" else None,
+            "toy_workers": arguments.toy_workers if arguments.cls_calibration == "toy" else None,
+            "toy_batch_size": arguments.toy_batch_size if arguments.cls_calibration == "toy" else None,
+            "finite_toy_p_value_correction": (
+                "(right_tail_count + 1) / (number_of_toys + 1)"
+                if arguments.cls_calibration == "toy"
+                else None
+            ),
+            "paper_difference": (
+                "paper does not publish exact toy count, seed, nuisance-generation or optimizer settings; these choices are explicit here"
+                if arguments.cls_calibration == "toy"
+                else "the paper obtains both p-values from pseudo-experiments and repeats its full statistical procedure; this interim contour is not toy-calibrated"
+            ),
             "chi2_3nu": chi2_3nu,
         },
-        "contour_note": "the heatmap and red exclusion contour both use analytic CLs; chi2 values remain internal diagnostics and the test-statistic input",
+        "contour_note": f"the heatmap and red exclusion contour both use {arguments.cls_calibration} CLs; chi2 values remain internal diagnostics and the test-statistic input",
     }
     (output_directory / "metadata.json").write_text(
         json.dumps(metadata, ensure_ascii=False, indent=2) + "\n",

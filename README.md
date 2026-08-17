@@ -103,9 +103,38 @@ NuMI `nue_cc_fc`；原有 BNB 四通道谱脚本及原有联合谱脚本保持�
 谱图中的 BNB 和 NuMI 只提供不同的数据 payload，二者统一调用
 `sterile_fit.spectrum_plotting.render_microboone_spectrum_panels`。Fig. 3a/3b
 参数空间热图、颜色条和红色排除线均使用 `CLs`，最终排除判定为
-`CLs=p_4nu/p_3nu<=0.05`。当前两个 p 值来自现有高斯协方差模型下对
-`chi2_4nu-chi2_3nu` 分布的一、二阶矩解析近似，不使用 Toy MC；因此仍不是
-论文使用伪实验校准得到的正式 CLs 排除线。
+`CLs=p_4nu/p_3nu<=0.05`。不带额外参数的扫描仍使用一、二阶矩高斯近似，作为
+快速诊断。要求用伪实验直接测量两个检验量分布时，显式运行：
+
+```powershell
+python scripts/scan.py `
+  --mode appearance-profile `
+  --analysis-config configs/analyses/microboone_bnb_numi.yaml `
+  --cls-calibration toy `
+  --number-of-toys 10000 `
+  --toy-seed 20250821 `
+  --toy-workers 4 `
+  --toy-batch-size 256
+```
+
+Toy 模式在 3ν 与每个被检验的 4ν 点下各生成 `--number-of-toys` 份伪数据，使用
+完整且随预测更新的协方差。每一份伪数据都重新执行与真实数据完全相同的二维点内
+profile，再直接统计 `T=chi2_4nu-profile-chi2_3nu` 的右尾频率；不再把 T 假设为
+高斯或卡方分布。Pearson 统计方差已经包含在协方差中，因此不会再叠加一次 Poisson
+抽样，也不会裁掉高斯伪数据中的负值。
+
+`result.csv` 保存两个尾部计数、经验 p 值、`CLs`、Monte Carlo 标准误以及 T 分布的
+均值/标准差/5%、50%、95% 分位数。需要逐个检查全部 Toy 时增加
+`--store-toy-distributions`，程序会为每个扫描点写一个可见 CSV。线程只并行彼此独立的
+Toy profile；扫描点种子由 `--toy-seed` 和固定点序号确定，因此改变线程数不会改变随机
+样本。`--toy-batch-size` 只限制同时驻留内存的伪数据数量，不改变随机流或结果。论文没有
+公开 Toy 数、随机种子、被 profile 参数的伪数据生成方式和优化器细节；
+本实现采用“真实数据在该扫描点的 profile 最优值”作为 4ν 生成点，并在 metadata 中明确
+记录，不能把这些未公开选择声称为合作组原始设置。
+
+完整 61×61 网格、每假设每点 10000 Toy 意味着 7442 万次带 profile 的伪实验拟合，
+属于正式批量任务。先用显式 2×2 或 8×8 坐标、数百 Toy 验证接口，再做 Toy 数与网格
+收敛；最终 0.05 附近至少比较不同种子和 Toy 数，其波动必须小于所需线位精度。
 
 经验锚点与基线在 `configs/experiments/microboone/bnb/analysis.yaml` 中声明。该文件明确将“HEPData unconstrained
 总谱＝零混合谱”标为不受论文支持的工作假设；它不能作为严格论文零假设复现。论文图 1

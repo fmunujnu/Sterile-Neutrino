@@ -142,6 +142,22 @@ body into a NuMI or joint script; factor or call the existing shared renderer.
 
 - A profile point fixes the requested scan coordinates and minimizes every other active physical parameter.
 - Use `profile_three_plus_one` or `profile_grid`; do not call a fixed-grid χ² evaluation a profile likelihood.
+- Paper-like pointwise exclusion uses `CLs=p_4nu/p_3nu` from the right tail of
+  `T=chi2_4nu-chi2_3nu`.  The production calibration is Toy MC under both
+  hypotheses.  A Gaussian moment approximation may remain only as an explicitly
+  selected fast diagnostic and must never be labelled Toy-calibrated.
+- Every Toy MC pseudo-experiment must repeat the same physical profile as the
+  observed scan point.  Holding the observed-data nuisance optimum fixed while
+  evaluating toys is not a profiled Toy result.
+- Generate pseudo-data with the full covariance already used by the Gaussian
+  likelihood.  Because its diagonal already contains the chosen Pearson count
+  variance, never add a second Poisson fluctuation.  Do not clip negative
+  Gaussian pseudo-counts or silently regularize the covariance.
+- Record the Toy count per hypothesis and scan point, base seed, derived point
+  seed rule, tail convention, finite-ensemble p-value correction, nuisance
+  generator prescription, profile method and worker count.  Store Monte Carlo
+  uncertainty next to every CLs value; optimizer/thread parallelism may improve
+  speed only when it leaves seeded numerical results invariant within tolerance.
 - Record the statistical covariance prescription in every result. For the target 2025 paper, use the documented Pearson prescription; the HEPData table header's conflicting CNP wording is only an explicit cross-check mode, never a silent default.
 - The stored total covariance is a reference audit artifact. Active scans must use `PredictionScaledGaussianLikelihood`: rescale the released systematic covariance with the current/reference prediction ratio and add current Pearson statistics. Never silently revert to the fixed reference matrix.
 - Profile the full unitary `sin2_theta14` domain. At fixed appearance amplitude, the large-`sin2_theta14` branch is not generally redundant because `|U_mu4|^2=(1-sin2_theta14)sin2_theta24` changes. Prefits must explicitly test zero-appearance boundary surfaces.
