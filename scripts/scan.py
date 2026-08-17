@@ -174,7 +174,7 @@ def main() -> None:
     parser.add_argument(
         "--number-of-toys",
         type=int,
-        default=1000,
+        default=100,
         help="pseudo-experiments generated under each of 3nu and tested 4nu at every scan point",
     )
     parser.add_argument("--toy-seed", type=int, default=20250821)

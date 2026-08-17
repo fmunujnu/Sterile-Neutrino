@@ -111,7 +111,7 @@ python scripts/scan.py `
   --mode appearance-profile `
   --analysis-config configs/analyses/microboone_bnb_numi.yaml `
   --cls-calibration toy `
-  --number-of-toys 10000 `
+  --number-of-toys 100 `
   --toy-seed 20250821 `
   --toy-workers 4 `
   --toy-batch-size 256
@@ -132,9 +132,10 @@ Toy profile；扫描点种子由 `--toy-seed` 和固定点序号确定，因此�
 本实现采用“真实数据在该扫描点的 profile 最优值”作为 4ν 生成点，并在 metadata 中明确
 记录，不能把这些未公开选择声称为合作组原始设置。
 
-完整 61×61 网格、每假设每点 10000 Toy 意味着 7442 万次带 profile 的伪实验拟合，
-属于正式批量任务。先用显式 2×2 或 8×8 坐标、数百 Toy 验证接口，再做 Toy 数与网格
-收敛；最终 0.05 附近至少比较不同种子和 Toy 数，其波动必须小于所需线位精度。
+当前默认是每个假设、每个扫描点 100 Toy。完整 61×61 网格因此包含 744200 次
+带 profile 的伪实验拟合，适合生成初步轮廓和测量实际运行时间，但不足以稳定测量
+`CLs=0.05` 附近的尾部。最终结果仍需增加 Toy 数、比较不同种子，并要求轮廓波动小于
+所需线位精度。
 
 经验锚点与基线在 `configs/experiments/microboone/bnb/analysis.yaml` 中声明。该文件明确将“HEPData unconstrained
 总谱＝零混合谱”标为不受论文支持的工作假设；它不能作为严格论文零假设复现。论文图 1
