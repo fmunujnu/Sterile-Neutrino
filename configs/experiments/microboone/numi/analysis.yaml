@@ -1,0 +1,23 @@
+analysis_name: "microboone_numi_unavailable"
+availability: "inputs_unavailable"
+include_in_analysis: false
+baseline_km: 0.680
+reference_parameters:
+  delta_m2_41_eV2: 1.2
+  sin2_theta14: 0.0
+  sin2_theta24: 0.0
+reason: "A diagnostic four-channel event adapter exists, but it borrows the BNB response, omits 3--5 GeV response support, freezes aggregate Background, and has no validated BNB--NuMI cross-covariance prescription."
+diagnostic_flux_inputs:
+  scientific_status: "PDF-vector reconstruction only; not validated as official numerical flux release"
+  components_directory: "data/experiments/microboone/numi/inputs/flux_components"
+  paper_weighted_directory: "data/experiments/microboone/numi/derived/paper_figure3_weighted_flux"
+  human_check_plot: "outputs/spectra/microboone/numi/flux_components.png"
+diagnostic_four_channel_events:
+  scientific_status: "empirical HEPData reference closure using a borrowed BNB response; not a validated NuMI likelihood"
+  kernel_directory: "data/experiments/microboone/numi/reweighting"
+  event_table: "outputs/spectra/microboone/numi/paper_parameter_event_counts.csv"
+  covariance: "data/experiments/microboone/numi/derived/numi_four_channel_systematic_covariance.csv"
+missing_before_likelihood_can_be_enabled:
+  - "NuMI-specific detector response with support across the required true-energy range"
+  - "component-level treatment of oscillatable events currently aggregated in published Background"
+  - "validated statistical prescription and BNB-NuMI cross-covariance treatment"

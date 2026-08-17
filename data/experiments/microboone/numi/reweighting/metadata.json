@@ -1,0 +1,97 @@
+{
+  "status": "diagnostic_event_reweighting_only",
+  "format": "numi_four_channel_empirical_kernel_v1",
+  "selected_released_channel_ordinals_one_based": [
+    8,
+    9,
+    10,
+    11
+  ],
+  "selected_published_global_bins_inclusive": [
+    182,
+    285
+  ],
+  "channel_order": [
+    "nue_cc_fc",
+    "nue_cc_pc",
+    "numu_cc_fc",
+    "numu_cc_pc"
+  ],
+  "covariance": {
+    "numerical_shape": [
+      104,
+      104
+    ],
+    "logical_shape": "4x4 channel blocks, each block 26x26 reconstructed bins",
+    "source": "E:\\Sterile Neutrino\\data\\experiments\\microboone\\shared\\raw\\hepdata_microboone_2025\\HEPData-ins3088922-v1-14_channel_covariance_matrix.csv",
+    "source_sha256": "76278A1435260C7FF2019B82F137CF724450C294304960DF26E776E8F6948877"
+  },
+  "spectrum": {
+    "source": "E:\\Sterile Neutrino\\data\\experiments\\microboone\\shared\\raw\\hepdata_microboone_2025\\HEPData-ins3088922-v1-Unconstrained_14_channels.csv",
+    "source_sha256": "64D93846FBEFF818F661E377AD16B43B1816652843E3B3154E7FC4E84841BD65",
+    "published_signal_definition": "Signal + Background minus Background"
+  },
+  "response": {
+    "source_directory": "E:\\Sterile Neutrino\\data\\experiments\\microboone\\bnb\\derived\\archival_2022_reco_bnb26_given_true",
+    "shape_per_channel": [
+      26,
+      60
+    ],
+    "true_energy_range_GeV": [
+      0.0,
+      3.0
+    ],
+    "true_energy_bin_width_GeV": 0.05,
+    "reuse_policy": "read-only reuse; no BNB file was modified"
+  },
+  "flux": {
+    "source_directory": "E:\\Sterile Neutrino\\data\\experiments\\microboone\\numi\\derived\\paper_figure3_weighted_flux",
+    "source_sha256": {
+      "numi_exposure_weighted_nue_flux.csv": "39C4254971835EC46C8DC8CDF65FF0545C9E9853755D1D076B95038FEE18836A",
+      "numi_exposure_weighted_numu_flux.csv": "F54592FA284DDB1269FFA43065C0567B0DD44B2C96BFD103823F076F7CDA7F1A",
+      "numi_exposure_weighted_nuebar_flux.csv": "FFB04F6F3E1831A291CD8529F56AF745F55221EBBD0FDC50AC65759755846BAA",
+      "numi_exposure_weighted_numubar_flux.csv": "C0843BA3A86EDE07491A1048DCD0DBB1FD7C54DD4B8688889EDCA97319A370C5"
+    },
+    "adaptation": "each 0.1 GeV per-bin value is split equally into its two 0.05 GeV Reco-grid bins",
+    "used_energy_range_GeV": [
+      0.0,
+      3.0
+    ],
+    "unused_flux_range_GeV": [
+      3.0,
+      5.0
+    ]
+  },
+  "reference": {
+    "baseline_km": 0.68,
+    "parameters": {
+      "delta_m2_41_eV2": 1.2,
+      "sin2_theta14": 0.0,
+      "sin2_theta24": 0.0
+    },
+    "construction": "same per-reconstructed-bin reference-ratio algebra used by BNB",
+    "closure": "exact against the selected HEPData Signal + Background vector by construction"
+  },
+  "paper_parameter_predictions": [
+    {
+      "delta_m2_41_eV2": 1.2,
+      "sin2_theta14": 0.043564535412361605,
+      "sin2_theta24": 0.018,
+      "sin2_2theta_mue_exact": 0.003000000000000002
+    },
+    {
+      "delta_m2_41_eV2": 1.2,
+      "sin2_theta14": 0.21132486540518713,
+      "sin2_theta24": 0.0045,
+      "sin2_2theta_mue_exact": 0.003
+    }
+  ],
+  "scientific_limits": [
+    "the HEPData total is an empirical anchor and is not asserted to be a published 3nu/null spectrum",
+    "the same normalized 2022 BNB response is assumed for NuMI because no NuMI-specific response is available",
+    "the response has no true-energy support above 3 GeV, so 3--5 GeV flux does not enter event reweighting",
+    "unknown cross section and efficiency are absorbed into one empirical scale per reconstructed bin",
+    "the aggregate published Background is frozen because component-level oscillatable templates are unavailable",
+    "this artifact does not define a NuMI chi-square or a combined BNB+NuMI likelihood"
+  ]
+}

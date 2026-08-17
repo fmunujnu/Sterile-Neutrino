@@ -1,0 +1,5 @@
+numpy>=1.26
+pdfplumber>=0.11
+Pillow>=10
+pytest>=8
+

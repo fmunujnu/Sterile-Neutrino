@@ -1,0 +1,21 @@
+{
+  "status": "diagnostic_prepared_input",
+  "matrix_shape": [
+    104,
+    104
+  ],
+  "logical_shape": "4x4 channel blocks, each block 26x26 reconstructed bins",
+  "channel_order": [
+    "nue_cc_fc",
+    "nue_cc_pc",
+    "numu_cc_fc",
+    "numu_cc_pc"
+  ],
+  "selected_published_global_bins_inclusive": [
+    182,
+    285
+  ],
+  "source": "E:\\Sterile Neutrino\\data\\experiments\\microboone\\shared\\raw\\hepdata_microboone_2025\\HEPData-ins3088922-v1-14_channel_covariance_matrix.csv",
+  "source_sha256": "76278A1435260C7FF2019B82F137CF724450C294304960DF26E776E8F6948877",
+  "likelihood_status": "disabled"
+}

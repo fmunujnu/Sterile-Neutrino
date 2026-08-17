@@ -1,0 +1,62 @@
+{
+  "status": "diagnostic_flux_level_only",
+  "final_file_count": 4,
+  "final_files": [
+    "E:\\Sterile Neutrino\\data\\experiments\\microboone\\numi\\derived\\paper_figure3_weighted_flux\\numi_exposure_weighted_numu_flux.csv",
+    "E:\\Sterile Neutrino\\data\\experiments\\microboone\\numi\\derived\\paper_figure3_weighted_flux\\numi_exposure_weighted_numubar_flux.csv",
+    "E:\\Sterile Neutrino\\data\\experiments\\microboone\\numi\\derived\\paper_figure3_weighted_flux\\numi_exposure_weighted_nue_flux.csv",
+    "E:\\Sterile Neutrino\\data\\experiments\\microboone\\numi\\derived\\paper_figure3_weighted_flux\\numi_exposure_weighted_nuebar_flux.csv"
+  ],
+  "input_flux_sha256": {
+    "numi_fhc_numu_flux.csv": "82E00A13CB4E7A8D20527E8CFA2010C1D586907372157B5045AF8609F288E5C5",
+    "numi_fhc_numubar_flux.csv": "DD67202FBCBB7488F4C37D5BEA18DFA47AAE526B6E96DB32F314519B78699E3E",
+    "numi_fhc_nue_flux.csv": "52F1B5F12FEC54DD17B51F8613459E3577CD66BBA9CDB9D18D2B2F1ABA040173",
+    "numi_fhc_nuebar_flux.csv": "E578C19C3C43BA3B276B2ADAB1A17D6472B5D16C93278D820C345454B3CE8BA5",
+    "numi_rhc_numu_flux.csv": "5AA2ACE7BB3F6E3FF0C3C01230D072C77F1F61A336B60682958DB7AC6F71466B",
+    "numi_rhc_numubar_flux.csv": "8023C2638BD5D3722471CD84EF06B2EF9263E1F41753F6B68428895712D12661",
+    "numi_rhc_nue_flux.csv": "A5A31C47BDCE119140A66D730C72173875BDEC336852FD44D66DC0A94A72F12F",
+    "numi_rhc_nuebar_flux.csv": "753BA34B432A52A78F635F865BCDD887FCF78ED5B39102AF9FCE3FA832C75442"
+  },
+  "flux_unit": "neutrinos / POT / cm^2 / 100 MeV",
+  "energy_grid": {
+    "minimum_GeV": 0.0,
+    "maximum_GeV": 5.0,
+    "bin_width_GeV": 0.1,
+    "bins": 50
+  },
+  "exposure_weighting": {
+    "total_NuMI_POT": 1.054e+21,
+    "FHC_fraction": 0.308,
+    "RHC_fraction": 0.692,
+    "formula": "combined flux per POT = 0.308 * FHC flux per POT + 0.692 * RHC flux per POT"
+  },
+  "oscillation_weighting": {
+    "baseline_km": 0.68,
+    "baseline_treatment": "single target-to-detector baseline approximation",
+    "parameter_points": [
+      {
+        "delta_m2_41_eV2": 1.2,
+        "labelled_sin2_2theta_mue": 0.003,
+        "sin2_theta14": 0.043564535412361605,
+        "sin2_theta24": 0.018,
+        "sin2_2theta_mue_exact": 0.003000000000000002
+      },
+      {
+        "delta_m2_41_eV2": 1.2,
+        "labelled_sin2_2theta_mue": 0.003,
+        "sin2_theta14": 0.21132486540518713,
+        "sin2_theta24": 0.0045,
+        "sin2_2theta_mue_exact": 0.003
+      }
+    ],
+    "final_e_formula": "Phi_e * P(e->e) + Phi_mu * P(mu->e)",
+    "final_mu_formula": "Phi_mu * P(mu->mu) + Phi_e * P(e->mu)",
+    "antineutrino_formula": "same construction using antineutrino probabilities"
+  },
+  "paper_sources": {
+    "parameter_note": "MICROBOONE-NOTE-1132-PUB Figure 3 discussion",
+    "parameter_note_url": "https://microboone.fnal.gov/wp-content/uploads/MICROBOONE-NOTE-1132-PUB.pdf",
+    "exposure_paper_doi": "10.1038/s41586-025-09757-7"
+  },
+  "scientific_boundary": "The input fluxes are recovered from displayed PDF vector paths. The fixed 0.680 km baseline does not integrate over the NuMI decay-position distribution. These files are diagnostic flux-level weights, not detector-folded event predictions and not inputs that validate a NuMI likelihood."
+}

@@ -1,0 +1,28 @@
+{
+  "construction": "per-reconstructed-bin reference-ratio kernel",
+  "baseline_km": 0.4685,
+  "baseline_interpretation": "BNB target-to-detector distance; one-baseline approximation",
+  "formula": "K_r,t,source = S_reference_r * R_r,t * flux_source_t / sum_t,source(R_r,t * flux_source_t * P_source_to_final(reference))",
+  "reference_parameters": {
+    "delta_m2_41_eV2": 1.2,
+    "sin2_theta14": 0.0,
+    "sin2_theta24": 0.0,
+    "sin2_2theta_mue_exact": 0.0
+  },
+  "fixed_background_definition": "HEPData published Background block, frozen during reweighting",
+  "reference_total_definition": "HEPData published Signal + Background block",
+  "assumptions": [
+    "unknown cross section and efficiency are not separately identified; their reference-weighted effect is assumed to be absorbed by the chosen response-times-flux true-energy prior and one scale factor per reconstructed bin",
+    "neutrino and antineutrino contributions to the same selected final-state channel share that effective ratio",
+    "the 2022 normalized migration matrix is used as the declared true-energy prior",
+    "the HEPData unconstrained total is imposed as an empirical zero-mixing anchor; the release does not identify it as the paper 3nu/null prediction",
+    "this empirical anchor is invalid for claiming a strict reproduction of the paper null prediction",
+    "the aggregate HEPData Background block is frozen because public component-level oscillatable templates are unavailable"
+  ],
+  "format": "bnb_four_channel_text_templates_v1",
+  "shape": {
+    "reconstructed_bins": 104,
+    "true_energy_bins": 60
+  },
+  "reconstructed_bin_order": "nue_cc_fc,nue_cc_pc,numu_cc_fc,numu_cc_pc; 26 bins each"
+}

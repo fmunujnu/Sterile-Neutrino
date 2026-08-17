@@ -1,0 +1,31 @@
+analysis_scope: "MicroBooNE BNB first four channels (104 reconstructed-energy bins)"
+published_data:
+  table_doi: "10.17182/hepdata.166435.v1/t1"
+  spectrum_file: "data/experiments/microboone/shared/raw/hepdata_microboone_2025/HEPData-ins3088922-v1-Unconstrained_14_channels.csv"
+  spectrum_sha256: "64D93846FBEFF818F661E377AD16B43B1816652843E3B3154E7FC4E84841BD65"
+  covariance_file: "data/experiments/microboone/shared/raw/hepdata_microboone_2025/HEPData-ins3088922-v1-14_channel_covariance_matrix.csv"
+  covariance_sha256: "76278A1435260C7FF2019B82F137CF724450C294304960DF26E776E8F6948877"
+  reference_definition: "Published unconstrained Signal + Background prediction"
+status:
+  detector_kernel: "visible empirical reference-ratio kernel available under data/experiments/microboone/bnb/reweighting"
+  numi: "excluded from active likelihood"
+  one_plus_three_plus_one: "future interface only"
+archival_response_matrices:
+  source_doi: "10.17182/hepdata.114862"
+  warning: "60x60 conditional Reco|true matrices from an earlier MicroBooNE release; not accepted as 2025 paper templates"
+  files:
+    - path: "data/experiments/microboone/bnb/raw_response/HEPData-ins1953539-v3-nu_eCC_FC_Energy_Resolution.yaml"
+      sha256: "A8EB2B2F73F31D213630F270A0845970DBD5DBA7DE8E3AF2FE6F6CC7217661F8"
+    - path: "data/experiments/microboone/bnb/raw_response/HEPData-ins1953539-v3-nu_eCC_PC_Energy_Resolution.yaml"
+      sha256: "B49AB32EB99B620FBB5584F9F89C426B3C00B2E97761D89DDE2E2F24B0B7F56C"
+    - path: "data/experiments/microboone/bnb/raw_response/HEPData-ins1953539-v3-nu_muCC_FC_Energy_Resolution.yaml"
+      sha256: "F91C55D0873713913E6D1F2548BC63587EDEB3FDCD64E8F88A48FB64525E0B47"
+    - path: "data/experiments/microboone/bnb/raw_response/HEPData-ins1953539-v3-nu_muCC_PC_Energy_Resolution.yaml"
+      sha256: "A233FFD6F109D6F4C0922F87CB2FC68F27EE09D3AA7BC3C388B34BF253E2668D"
+visible_flux_conversion:
+  file: "data/experiments/microboone/bnb/inputs/bnb_flux.csv"
+  metadata: "data/experiments/microboone/bnb/inputs/bnb_flux.metadata.json"
+  method: "syntax-only extraction of four 60-bin historical arrays; frozen Python was not imported or executed"
+reference_kernel:
+  directory: "data/experiments/microboone/bnb/reweighting"
+  construction: "per-reconstructed-bin reference-ratio kernel, exactly closing HEPData Signal + Background"

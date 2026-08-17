@@ -2,10 +2,18 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.mypy_cache/
+*.egg-info/
 
-# Analysis runs are reproducible outputs; retain only the directory marker.
-/microboone_fit/runs/*
-!/microboone_fit/runs/.gitkeep
+# Generated spectra, scans and test artefacts are reproducible outputs.
+/outputs/*
+!/outputs/.gitkeep
+
+# Workspace scratch space must never become an analysis dependency.
+/tmp/
+
+# Official 2.29 GB scan grid is retained locally; GitHub rejects files over 100 MB.
+/data/experiments/microboone/shared/microboone_material_gridscan_numi_dm2_t14_t24_dchi2.txt
 
 # Windows-reserved-name artefact accidentally present in the workspace root.
 /nul

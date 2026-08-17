@@ -1,0 +1,32 @@
+{
+  "name": "minerva_numu_fhc",
+  "source_pdf": "data/minerva_release/supplemental.pdf",
+  "page_number_1_based": 3,
+  "truth_file": "data/minerva_release/numuFHC.txt",
+  "truth_bin_width_GeV": 0.5,
+  "truth_energy_min_GeV": 0.0,
+  "plot_energy_max_GeV": 20.0,
+  "truth_to_plot_scale": 1000000.0,
+  "curve_selector": {
+    "stroke_rgb": [0.0, 0.0, 0.6],
+    "minimum_points": 20,
+    "minimum_horizontal_coverage_fraction": 0.3,
+    "ambiguity_score_fraction": 0.05
+  },
+  "axis": {
+    "x_scale": "auto",
+    "y_scale": "auto"
+  },
+  "validation": {
+    "maximum_relative_value_error": 0.002,
+    "maximum_absolute_page_error_points": 0.24,
+    "maximum_integral_relative_error": 0.001
+  },
+  "source": {
+    "release_page": "https://minerva.fnal.gov/numi-flux-prediction-data-release/",
+    "arxiv_ancillary_base": "https://arxiv.org/src/1607.00704v2/anc/",
+    "paper": "Phys. Rev. D 94, 092005 (2016)",
+    "scientific_role": "algorithm_validation_only"
+  }
+}
+

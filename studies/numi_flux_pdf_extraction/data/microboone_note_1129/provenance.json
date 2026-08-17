@@ -1,0 +1,9 @@
+{
+  "source_url": "https://microboone.fnal.gov/wp-content/uploads/MICROBOONE-NOTE-1129-PUB.pdf",
+  "title": "Updates to the NuMI Flux Simulation at MicroBooNE",
+  "version": "1.0",
+  "date": "2024-06-11",
+  "sha256": "CA99E5C41CFBCB56E35C89C12DD6772B247BBA424FF3929BC87E134CF8263E35",
+  "scientific_role": "vector-extraction integration test; not an official numerical flux release"
+}
+

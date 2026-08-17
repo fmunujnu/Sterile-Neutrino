@@ -1,0 +1,26 @@
+{
+  "status": "diagnostic_pdf_vector_reconstruction",
+  "source_directory": "outputs/checks/numi_flux_pdf_extraction/microboone_pages_4_7/flux_arrays",
+  "copied_to": "data/experiments/microboone/numi/inputs/flux_components",
+  "source_pdf": "studies/numi_flux_pdf_extraction/data/microboone_note_1129/MICROBOONE-NOTE-1129-PUB.pdf",
+  "source_pages": [4, 5, 6, 7],
+  "flux_definition": "New Flux (Geant 4.10.4)",
+  "flux_unit": "neutrinos / POT / cm^2 / 100 MeV",
+  "energy_grid": {
+    "minimum_GeV": 0.0,
+    "maximum_GeV": 5.0,
+    "bin_width_GeV": 0.1,
+    "bins": 50
+  },
+  "files_sha256": {
+    "numi_fhc_nue_flux.csv": "52F1B5F12FEC54DD17B51F8613459E3577CD66BBA9CDB9D18D2B2F1ABA040173",
+    "numi_fhc_nuebar_flux.csv": "E578C19C3C43BA3B276B2ADAB1A17D6472B5D16C93278D820C345454B3CE8BA5",
+    "numi_fhc_numu_flux.csv": "82E00A13CB4E7A8D20527E8CFA2010C1D586907372157B5045AF8609F288E5C5",
+    "numi_fhc_numubar_flux.csv": "DD67202FBCBB7488F4C37D5BEA18DFA47AAE526B6E96DB32F314519B78699E3E",
+    "numi_rhc_nue_flux.csv": "A5A31C47BDCE119140A66D730C72173875BDEC336852FD44D66DC0A94A72F12F",
+    "numi_rhc_nuebar_flux.csv": "753BA34B432A52A78F635F865BCDD887FCF78ED5B39102AF9FCE3FA832C75442",
+    "numi_rhc_numu_flux.csv": "5AA2ACE7BB3F6E3FF0C3C01230D072C77F1F61A336B60682958DB7AC6F71466B",
+    "numi_rhc_numubar_flux.csv": "8023C2638BD5D3722471CD84EF06B2EF9263E1F41753F6B68428895712D12661"
+  },
+  "scientific_boundary": "These are values reconstructed from displayed PDF vector paths, not official unpublished ROOT flux arrays."
+}
