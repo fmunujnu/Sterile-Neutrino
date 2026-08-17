@@ -158,6 +158,11 @@ body into a NuMI or joint script; factor or call the existing shared renderer.
   generator prescription, profile method and worker count.  Store Monte Carlo
   uncertainty next to every CLs value; optimizer/thread parallelism may improve
   speed only when it leaves seeded numerical results invariant within tolerance.
+- Adaptive Toy calibration may use the analytic surface only to select a broad
+  contour band.  Result tables must separately mark candidate and actually
+  evaluated points and retain both analytic and Toy CLs.  A hybrid diagnostic
+  surface must never be described as an all-Toy result.  A diagnostic point cap
+  must sample across the full candidate-index range, not only its first rows.
 - Record the statistical covariance prescription in every result. For the target 2025 paper, use the documented Pearson prescription; the HEPData table header's conflicting CNP wording is only an explicit cross-check mode, never a silent default.
 - The stored total covariance is a reference audit artifact. Active scans must use `PredictionScaledGaussianLikelihood`: rescale the released systematic covariance with the current/reference prediction ratio and add current Pearson statistics. Never silently revert to the fixed reference matrix.
 - Profile the full unitary `sin2_theta14` domain. At fixed appearance amplitude, the large-`sin2_theta14` branch is not generally redundant because `|U_mu4|^2=(1-sin2_theta14)sin2_theta24` changes. Prefits must explicitly test zero-appearance boundary surfaces.

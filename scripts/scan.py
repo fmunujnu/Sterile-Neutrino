@@ -139,6 +139,44 @@ def _stable_point_seed(base_seed: int, point_index: int) -> int:
     return int(sequence.generate_state(1, dtype=np.uint64)[0])
 
 
+def _adaptive_toy_candidate_mask(
+    result_table: pd.DataFrame,
+    *,
+    x_name: str,
+    lower_analytic_cls: float,
+    upper_analytic_cls: float,
+    neighbour_padding: int,
+    threshold: float = 0.05,
+) -> np.ndarray:
+    """Select a wide analytic contour band plus neighbouring x-grid cells."""
+    if not 0.0 <= lower_analytic_cls < threshold < upper_analytic_cls <= 1.0:
+        raise ValueError("adaptive analytic CLs bounds must bracket 0.05 inside [0, 1]")
+    if neighbour_padding < 0:
+        raise ValueError("adaptive neighbour padding must be non-negative")
+    required = {"fixed_delta_m2_41_eV2", x_name, "cls_asymptotic"}
+    missing = required.difference(result_table.columns)
+    if missing:
+        raise ValueError(f"adaptive candidate table is missing columns: {sorted(missing)}")
+    selected = np.zeros(len(result_table), dtype=bool)
+    for _, group in result_table.groupby("fixed_delta_m2_41_eV2", sort=False):
+        ordered = group.sort_values(x_name)
+        indices = ordered.index.to_numpy(dtype=int)
+        values = ordered["cls_asymptotic"].to_numpy(dtype=float)
+        local = (values >= lower_analytic_cls) & (values <= upper_analytic_cls)
+        crossing = np.flatnonzero(
+            (values[:-1] - threshold) * (values[1:] - threshold) <= 0.0
+        )
+        for left in crossing:
+            local[left : left + 2] = True
+        expanded = local.copy()
+        for position in np.flatnonzero(local):
+            start = max(0, position - neighbour_padding)
+            stop = min(local.size, position + neighbour_padding + 1)
+            expanded[start:stop] = True
+        selected[indices] = expanded
+    return selected
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -167,9 +205,9 @@ def main() -> None:
     parser.add_argument("--sin2-2theta-ee-max", type=float, default=1.0)
     parser.add_argument(
         "--cls-calibration",
-        choices=("analytic", "toy"),
+        choices=("analytic", "toy", "adaptive-toy"),
         default="analytic",
-        help="analytic is a fast diagnostic; toy repeats the pointwise profile for every pseudo-experiment",
+        help="adaptive-toy runs analytic CLs globally and profiled toys only near its 0.05 contour",
     )
     parser.add_argument(
         "--number-of-toys",
@@ -195,6 +233,14 @@ def main() -> None:
         action="store_true",
         help="write every generated test statistic as visible per-point CSV files",
     )
+    parser.add_argument("--adaptive-analytic-cls-min", type=float, default=0.01)
+    parser.add_argument("--adaptive-analytic-cls-max", type=float, default=0.1)
+    parser.add_argument("--adaptive-neighbour-padding", type=int, default=1)
+    parser.add_argument(
+        "--adaptive-toy-point-limit",
+        type=int,
+        help="diagnostic cap on selected Toy points; omitted means evaluate the complete selected band",
+    )
     parser.add_argument("--output-directory", type=Path)
     arguments = parser.parse_args()
     selection = load_analysis_selection(arguments.analysis_config, repository_root=ROOT)
@@ -211,16 +257,24 @@ def main() -> None:
     objective = analysis.objective.chi2
     if arguments.grid_points < 8:
         raise ValueError("--grid-points must be at least 8 for a resolved two-dimensional scan")
-    if arguments.cls_calibration == "toy" and arguments.number_of_toys < 2:
+    toy_enabled = arguments.cls_calibration in {"toy", "adaptive-toy"}
+    if toy_enabled and arguments.number_of_toys < 2:
         raise ValueError("--number-of-toys must be at least 2 per hypothesis")
-    if arguments.cls_calibration == "toy" and arguments.toy_workers < 1:
+    if toy_enabled and arguments.toy_workers < 1:
         raise ValueError("--toy-workers must be at least 1")
-    if arguments.cls_calibration == "toy" and arguments.toy_batch_size < 1:
+    if toy_enabled and arguments.toy_batch_size < 1:
         raise ValueError("--toy-batch-size must be at least 1")
-    if arguments.mode == "prefit" and arguments.cls_calibration == "toy":
+    if arguments.mode == "prefit" and toy_enabled:
         raise ValueError("Toy CLs calibrates scan points and is not defined for --mode prefit")
-    if arguments.store_toy_distributions and arguments.cls_calibration != "toy":
-        raise ValueError("--store-toy-distributions requires --cls-calibration toy")
+    if arguments.store_toy_distributions and not toy_enabled:
+        raise ValueError("--store-toy-distributions requires a Toy CLs calibration")
+    if arguments.adaptive_toy_point_limit is not None and arguments.adaptive_toy_point_limit < 0:
+        raise ValueError("--adaptive-toy-point-limit must be non-negative")
+    if (
+        arguments.adaptive_toy_point_limit is not None
+        and arguments.cls_calibration != "adaptive-toy"
+    ):
+        raise ValueError("--adaptive-toy-point-limit requires --cls-calibration adaptive-toy")
     delta_m2_grid = arguments.delta_m2_grid_eV2 or np.geomspace(
         arguments.delta_m2_min_eV2,
         arguments.delta_m2_max_eV2,
@@ -359,7 +413,7 @@ def main() -> None:
         result_table["test_statistic_chi2_4nu_minus_chi2_3nu"] = (
             result_table["chi2"] - chi2_3nu
         )
-        if arguments.cls_calibration == "analytic":
+        if arguments.cls_calibration in {"analytic", "adaptive-toy"}:
             cls_rows = []
             for tested_parameters, observed_test_statistic in zip(
                 row_parameters,
@@ -373,17 +427,54 @@ def main() -> None:
             result_table["p_value_4nu_asymptotic"] = [item.p_value_4nu for item in cls_rows]
             result_table["p_value_3nu_asymptotic"] = [item.p_value_3nu for item in cls_rows]
             result_table["cls_asymptotic"] = [item.cls for item in cls_rows]
+        if arguments.cls_calibration == "analytic":
             cls_column = "cls_asymptotic"
         else:
-            toy_summary_rows = []
+            if arguments.cls_calibration == "toy":
+                candidate_mask = np.ones(len(result_table), dtype=bool)
+            else:
+                adaptive_x_name = {
+                    "appearance-profile": "fixed_sin2_2theta_mue",
+                    "electron-disappearance-profile": "fixed_sin2_2theta_ee",
+                    "s14-profile": "fixed_sin2_theta14",
+                }[arguments.mode]
+                candidate_mask = _adaptive_toy_candidate_mask(
+                    result_table,
+                    x_name=adaptive_x_name,
+                    lower_analytic_cls=arguments.adaptive_analytic_cls_min,
+                    upper_analytic_cls=arguments.adaptive_analytic_cls_max,
+                    neighbour_padding=arguments.adaptive_neighbour_padding,
+                )
+                result_table["adaptive_toy_candidate"] = candidate_mask
+            candidate_indices = np.flatnonzero(candidate_mask)
+            full_candidate_count = int(candidate_indices.size)
+            if arguments.cls_calibration == "adaptive-toy" and arguments.adaptive_toy_point_limit is not None:
+                limit = min(arguments.adaptive_toy_point_limit, full_candidate_count)
+                if limit == 0:
+                    candidate_indices = candidate_indices[:0]
+                elif limit < full_candidate_count:
+                    sample_positions = np.linspace(
+                        0, full_candidate_count - 1, limit, dtype=int
+                    )
+                    candidate_indices = candidate_indices[sample_positions]
+            if arguments.cls_calibration == "adaptive-toy":
+                print(
+                    f"Adaptive Toy selection: {full_candidate_count}/{len(result_table)} "
+                    f"candidate points; evaluating {candidate_indices.size}"
+                )
+            evaluated_mask = np.zeros(len(result_table), dtype=bool)
+            evaluated_mask[candidate_indices] = True
+            if arguments.cls_calibration == "adaptive-toy":
+                result_table["adaptive_toy_evaluated"] = evaluated_mask
+            toy_summary_rows: dict[int, dict[str, float | int]] = {}
             raw_distribution_directory = output_directory / "toy_distributions"
-            if arguments.store_toy_distributions:
+            if arguments.store_toy_distributions and candidate_indices.size:
                 raw_distribution_directory.mkdir(parents=True, exist_ok=False)
-            for point_index, (tested_parameters, observed_test_statistic) in enumerate(zip(
-                row_parameters,
-                result_table["test_statistic_chi2_4nu_minus_chi2_3nu"],
-                strict=True,
-            )):
+            for completed_count, point_index in enumerate(candidate_indices, start=1):
+                tested_parameters = row_parameters[int(point_index)]
+                observed_test_statistic = result_table.loc[
+                    point_index, "test_statistic_chi2_4nu_minus_chi2_3nu"
+                ]
                 pairs = _hypothesis_pairs(analysis, null_parameters, tested_parameters)
                 null_hypotheses = tuple(pair[0] for pair in pairs)
                 tested_hypotheses = tuple(pair[1] for pair in pairs)
@@ -418,7 +509,8 @@ def main() -> None:
                         float_format="%.17g",
                     )
                 print(
-                    f"Toy CLs point {point_index + 1}/{len(row_parameters)}: "
+                    f"Toy CLs selected point {completed_count}/{candidate_indices.size} "
+                    f"(global index {point_index}): "
                     f"CLs={comparison.cls:.6g}"
                 )
                 summary = {
@@ -447,13 +539,26 @@ def main() -> None:
                         summary[
                             f"test_statistic_quantile_{suffix}_under_{hypothesis_name}"
                         ] = float(np.quantile(values, quantile))
-                toy_summary_rows.append(summary)
-            toy_summary_table = pd.DataFrame(toy_summary_rows)
-            if len(toy_summary_table) != len(result_table):
-                raise RuntimeError("Toy summary rows do not match profile scan rows")
-            for column in toy_summary_table:
-                result_table[column] = toy_summary_table[column].to_numpy()
-            cls_column = "cls_toy"
+                toy_summary_rows[int(point_index)] = summary
+            if toy_summary_rows:
+                toy_summary_table = pd.DataFrame.from_dict(toy_summary_rows, orient="index")
+                for column in toy_summary_table:
+                    result_table[column] = np.nan
+                    result_table.loc[toy_summary_table.index, column] = toy_summary_table[
+                        column
+                    ].to_numpy()
+            else:
+                result_table["cls_toy"] = np.nan
+            if arguments.cls_calibration == "toy":
+                if result_table["cls_toy"].isna().any():
+                    raise RuntimeError("complete Toy calibration left unevaluated scan points")
+                cls_column = "cls_toy"
+            else:
+                result_table["cls_adaptive_hybrid"] = result_table["cls_asymptotic"]
+                result_table.loc[evaluated_mask, "cls_adaptive_hybrid"] = result_table.loc[
+                    evaluated_mask, "cls_toy"
+                ]
+                cls_column = "cls_adaptive_hybrid"
     result_table.to_csv(output_directory / "result.csv", index=False, float_format="%.17g")
     if arguments.mode != "prefit":
         x_name = {
@@ -494,7 +599,11 @@ def main() -> None:
                 handles=[Line2D([0], [0], color="tab:red", linewidth=2.0, label=(
                     r"95% $CL_s$ (profiled Toy MC)"
                     if arguments.cls_calibration == "toy"
-                    else r"95% $CL_s$ (analytic Gaussian approximation)"
+                    else (
+                        r"95% $CL_s$ (adaptive analytic + Toy MC)"
+                        if arguments.cls_calibration == "adaptive-toy"
+                        else r"95% $CL_s$ (analytic Gaussian approximation)"
+                    )
                 ))],
                 loc="best",
                 fontsize=8,
@@ -512,9 +621,11 @@ def main() -> None:
             if analysis.analysis_name == "microboone_bnb_numi_joint_diagnostic"
             else analysis.analysis_name.replace("_", " ")
         )
-        calibration_title = (
-            "profiled Toy-MC" if arguments.cls_calibration == "toy" else "profiled analytic"
-        )
+        calibration_title = {
+            "toy": "profiled Toy-MC",
+            "adaptive-toy": "adaptive analytic + profiled Toy-MC",
+            "analytic": "profiled analytic",
+        }[arguments.cls_calibration]
         axis.set_title(rf"$3+1$ {analysis_label}: {calibration_title} $CL_s$")
         figure.colorbar(colour, ax=axis, label=r"$CL_s$")
         figure.tight_layout()
@@ -575,38 +686,57 @@ def main() -> None:
             "calibration": (
                 "empirical Toy MC under both hypotheses; no assumed test-statistic distribution"
                 if arguments.cls_calibration == "toy"
-                else "analytic moment-matched Gaussian approximation; no Toy MC"
+                else (
+                    "global analytic CLs with profiled Toy MC only in the declared adaptive contour band"
+                    if arguments.cls_calibration == "adaptive-toy"
+                    else "analytic moment-matched Gaussian approximation; no Toy MC"
+                )
             ),
             "tail": "right-tailed under both fixed hypotheses",
             "profile_treatment": (
                 "every pseudo-experiment repeats the same pointwise physical profile as the observed data"
-                if arguments.cls_calibration == "toy"
+                if toy_enabled
                 else "the observed-data profiled 4nu prediction is held fixed while calibrating each point"
             ),
             "toy_generator_nuisance_treatment": (
                 "plug-in at the observed-data profiled 4nu point"
-                if arguments.cls_calibration == "toy"
+                if toy_enabled
                 else None
             ),
             "toy_fluctuation_model": (
                 "multivariate Gaussian using the complete prediction-dependent covariance; no clipping and no extra Poisson draw"
-                if arguments.cls_calibration == "toy"
+                if toy_enabled
                 else None
             ),
             "toy_count_per_hypothesis_per_point": (
-                arguments.number_of_toys if arguments.cls_calibration == "toy" else None
+                arguments.number_of_toys if toy_enabled else None
             ),
-            "toy_seed": arguments.toy_seed if arguments.cls_calibration == "toy" else None,
-            "toy_workers": arguments.toy_workers if arguments.cls_calibration == "toy" else None,
-            "toy_batch_size": arguments.toy_batch_size if arguments.cls_calibration == "toy" else None,
+            "toy_seed": arguments.toy_seed if toy_enabled else None,
+            "toy_workers": arguments.toy_workers if toy_enabled else None,
+            "toy_batch_size": arguments.toy_batch_size if toy_enabled else None,
             "finite_toy_p_value_correction": (
                 "(right_tail_count + 1) / (number_of_toys + 1)"
-                if arguments.cls_calibration == "toy"
+                if toy_enabled
+                else None
+            ),
+            "adaptive_selection": (
+                {
+                    "analytic_cls_band": [
+                        arguments.adaptive_analytic_cls_min,
+                        arguments.adaptive_analytic_cls_max,
+                    ],
+                    "neighbour_padding_per_mass_row": arguments.adaptive_neighbour_padding,
+                    "candidate_points": int(result_table["adaptive_toy_candidate"].sum()),
+                    "evaluated_toy_points": int(result_table["adaptive_toy_evaluated"].sum()),
+                    "diagnostic_point_limit": arguments.adaptive_toy_point_limit,
+                    "hybrid_surface": "Toy CLs at evaluated points; analytic CLs elsewhere",
+                }
+                if arguments.cls_calibration == "adaptive-toy"
                 else None
             ),
             "paper_difference": (
                 "paper does not publish exact toy count, seed, nuisance-generation or optimizer settings; these choices are explicit here"
-                if arguments.cls_calibration == "toy"
+                if toy_enabled
                 else "the paper obtains both p-values from pseudo-experiments and repeats its full statistical procedure; this interim contour is not toy-calibrated"
             ),
             "chi2_3nu": chi2_3nu,

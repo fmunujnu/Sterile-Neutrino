@@ -137,6 +137,23 @@ Toy profile；扫描点种子由 `--toy-seed` 和固定点序号确定，因此�
 `CLs=0.05` 附近的尾部。最终结果仍需增加 Toy 数、比较不同种子，并要求轮廓波动小于
 所需线位精度。
 
+优先推荐自适应模式：先在完整网格计算快速解析 CLs，再只对解析结果位于
+`0.01..0.1` 的点及每个质量行左右各一个相邻点运行100 Toy：
+
+```powershell
+python scripts/scan.py `
+  --mode appearance-profile `
+  --analysis-config configs/analyses/microboone_bnb_numi.yaml `
+  --cls-calibration adaptive-toy `
+  --number-of-toys 100 `
+  --toy-workers 4
+```
+
+`result.csv` 分别保存 `cls_asymptotic`、`cls_toy`、`adaptive_toy_candidate`、
+`adaptive_toy_evaluated` 和用于初步绘图的 `cls_adaptive_hybrid`。未选择的点仍明确是
+解析值，不得称为 Toy 结果。`--adaptive-toy-point-limit N` 只用于抽取横跨候选带的 N
+个点做运行测试；正式自适应扫描必须省略该参数。
+
 经验锚点与基线在 `configs/experiments/microboone/bnb/analysis.yaml` 中声明。该文件明确将“HEPData unconstrained
 总谱＝零混合谱”标为不受论文支持的工作假设；它不能作为严格论文零假设复现。论文图 1
 的示意点也只作为注释保留，绝不参与锚定。参数只使用：
