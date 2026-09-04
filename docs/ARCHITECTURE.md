@@ -40,7 +40,7 @@ run.py scan
   -> core/likelihood.py 当前预测协方差和目标函数
   -> core/profile_*.py 固定坐标下的最小化
   -> core/calibration.py
-       analytic: 两个固定假设的精确一二阶矩 -> 高斯尾概率近似
+       analytic: 两个固定假设 -> 广义二次型特征函数反演 -> 尾概率
        toy: 逐点profile观测数据 -> 固定预测和协方差 -> 生成并评价伪数据 -> 经验尾概率
   -> output.py 保存及绘图
 ```

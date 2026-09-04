@@ -92,17 +92,39 @@ def plot_statistic_calibration(panels, output_path, *, title):
     """Density, right tail and CDF residual; no model/profile calculation here."""
     from scipy.stats import norm
     figure, axes = plt.subplots(3, len(panels), figsize=(12, 12), squeeze=False)
+    cls_threshold = None
+    if len(panels) == 2 and all(panel.get("candidate") is not None for panel in panels):
+        lower = max(float(panel["candidate"]["T"].min()) for panel in panels)
+        upper = min(float(panel["candidate"]["T"].max()) for panel in panels)
+        threshold_grid = np.linspace(lower, upper, 4000)
+        tails = [
+            np.interp(threshold_grid, panel["candidate"]["T"], panel["candidate"]["sf"])
+            for panel in panels
+        ]
+        difference = tails[1] - 0.05 * tails[0]
+        crossings = np.flatnonzero(difference[:-1] * difference[1:] <= 0.0)
+        if crossings.size:
+            observed = float(panels[0]["observed_T"])
+            candidates = []
+            for index in crossings:
+                fraction = difference[index] / (difference[index] - difference[index + 1])
+                candidates.append(threshold_grid[index] + fraction * (threshold_grid[index + 1] - threshold_grid[index]))
+            cls_threshold = min(candidates, key=lambda value: abs(value - observed))
     for column, panel in enumerate(panels):
         values = np.asarray(panel["profiled_T"])
-        fixed = np.asarray(panel["fixed_T"])
+        fixed = None if panel.get("fixed_T") is None else np.asarray(panel["fixed_T"])
+        toy_label = panel.get("toy_label", "Toy: reprofiled")
         distribution = norm(loc=panel["mean"], scale=panel["sigma"])
-        low = min(values.min(), fixed.min(), distribution.ppf(0.001), panel["observed_T"])
-        high = max(values.max(), fixed.max(), distribution.ppf(0.999), panel["observed_T"])
+        low = min(values.min(), distribution.ppf(0.001), panel["observed_T"])
+        high = max(values.max(), distribution.ppf(0.999), panel["observed_T"])
+        if fixed is not None:
+            low, high = min(low, fixed.min()), max(high, fixed.max())
         grid = np.linspace(low, high, 800)
         bins = np.linspace(low, high, 36)
         ax = axes[0, column]
-        ax.hist(values, bins=bins, density=True, histtype="step", color="tab:green", zorder=3, label="Toy: reprofiled")
-        ax.hist(fixed, bins=bins, density=True, histtype="step", color="0.45", linestyle="--", zorder=2, label="Same Toy: fixed hypotheses")
+        ax.hist(values, bins=bins, density=True, histtype="step", color="tab:green", zorder=3, label=toy_label)
+        if fixed is not None:
+            ax.hist(fixed, bins=bins, density=True, histtype="step", color="0.45", linestyle="--", zorder=2, label="Same Toy: fixed hypotheses")
         ax.plot(grid, distribution.pdf(grid), color="tab:red", label="Covariance Gaussian (not fitted)")
         candidate = panel.get("candidate")
         if candidate is not None:
@@ -116,7 +138,10 @@ def plot_statistic_calibration(panels, output_path, *, title):
         if candidate is not None:
             ax.lines[-1].set(alpha=.35, zorder=1, label="Gaussian: visual reference only")
             ax.plot(candidate["T"], candidate["sf"], color="tab:blue", label="Fixed quadratic right tail", zorder=4)
-        for sample, color, label in ((values, "tab:green", "Reprofiled empirical tail"), (fixed, "0.45", "Fixed empirical tail")):
+        tail_samples = [(values, "tab:green", panel.get("tail_label", "Reprofiled empirical tail"))]
+        if fixed is not None:
+            tail_samples.append((fixed, "0.45", "Fixed empirical tail"))
+        for sample, color, label in tail_samples:
             ordered = np.sort(sample)
             tail = (sample.size - np.searchsorted(ordered, grid, side="left")) / sample.size
             ax.step(grid, tail, where="post", color=color, label=label, linestyle="--" if color == "0.45" else "-", zorder=2 if color == "0.45" else 3)
@@ -128,22 +153,17 @@ def plot_statistic_calibration(panels, output_path, *, title):
         epsilon = np.sqrt(np.log(2 / .05) / (2 * values.size))
         ax.axhspan(-epsilon, epsilon, color="0.8", alpha=.4,
                    label="95% DKW band (one specified CDF)")
-        for sample, color, label in ((values, "tab:green", "Reprofiled Toy"), (fixed, "0.45", "Fixed Toy")):
-            reference_cdf = distribution.cdf(grid) if candidate is None else 1-np.interp(grid, candidate["T"], candidate["sf"])
-            residual = np.searchsorted(np.sort(sample), grid, side="right") / len(sample) - reference_cdf
-            ax.step(grid, residual, where="post", color=color, label=label,
-                    linestyle="--" if color == "0.45" else "-", zorder=2 if color == "0.45" else 3)
-        ax.axhline(0, color="tab:red", label="No CDF difference")
-        ax.axvline(panel["observed_T"], color="black", linestyle=":")
-        ax.set(xlabel=r"Threshold $t$", ylabel=r"$F_{Toy}(t)-F_{Gaussian}(t)$")
+        empirical_cdf = np.searchsorted(np.sort(values), grid, side="right") / len(values)
+        ax.axhline(0, color="tab:green", label="Fixed Toy CDF baseline")
+        ax.set(xlabel=r"Threshold $t$", ylabel=r"$F_{model}(t)-F_{Toy}(t)$")
         if candidate is not None:
-            ax.set_ylabel(r"$F_{Toy}(t)-F_{quadratic}(t)$")
             candidate_cdf = 1-np.interp(grid, candidate["T"], candidate["sf"])
-            ax.plot(grid, distribution.cdf(grid)-candidate_cdf, color="tab:orange",
-                    linestyle="--", label="Gaussian CDF - quadratic CDF", zorder=4)
-            empirical = np.searchsorted(np.sort(values), grid, side="right")/len(values)
-            ax.plot(grid, empirical-distribution.cdf(grid), color="tab:red", alpha=.65,
-                    linestyle=":", label="Profiled Toy CDF - Gaussian CDF", zorder=3)
+            ax.plot(grid, candidate_cdf-empirical_cdf, color="tab:blue",
+                    label="Quadratic CDF - Fixed Toy CDF", zorder=4)
+            ax.plot(grid, distribution.cdf(grid)-empirical_cdf, color="tab:orange",
+                    linestyle="--", label="Gaussian CDF - Fixed Toy CDF", zorder=3)
+        if cls_threshold is not None:
+            ax.axvline(cls_threshold, color="black", linestyle=":", label=r"Quadratic $CL_s(t)=0.05$")
         ax.legend(fontsize=8)
         for row in (0, 1, 2):
             axes[row, column].ticklabel_format(axis="x", style="sci", scilimits=(-3, 3), useOffset=False)
@@ -380,9 +400,9 @@ def plot_three_plus_one_scan(result_table, output_directory, arguments, analysis
                 r"95% $CL_s$ (fixed-hypothesis Toy MC)"
                 if arguments.cls_calibration == "toy"
                 else (
-                    r"95% $CL_s$ (adaptive analytic + Toy MC)"
+                    r"95% $CL_s$ (adaptive quadratic form + Toy MC)"
                     if arguments.cls_calibration == "adaptive-toy"
-                    else r"95% $CL_s$ (analytic Gaussian approximation)"
+                    else r"95% $CL_s$ (quadratic-form inversion)"
                 )
             ))],
             loc="best",
@@ -403,8 +423,8 @@ def plot_three_plus_one_scan(result_table, output_directory, arguments, analysis
     )
     calibration_title = {
         "toy": "fixed-hypothesis Toy-MC",
-        "adaptive-toy": "adaptive analytic + fixed-hypothesis Toy-MC",
-        "analytic": "profiled analytic",
+        "adaptive-toy": "adaptive quadratic form + fixed-hypothesis Toy-MC",
+        "analytic": "profiled quadratic-form inversion",
     }[arguments.cls_calibration]
     axis.set_title(rf"$3+1$ {analysis_label}: {calibration_title} $CL_s$")
     figure.colorbar(colour, ax=axis, label=r"$CL_s$")
@@ -717,7 +737,7 @@ COMPARISON_SCANS = (
     (
         "fig3a_analytic",
         "fixed_sin2_2theta_mue",
-        "cls_asymptotic",
+        "cls_quadratic",
         r"$\sin^2(2\theta_{\mu e})$",
         r"Fig. 3a: analytic $CL_s$",
     ),
@@ -731,7 +751,7 @@ COMPARISON_SCANS = (
     (
         "fig3b_analytic",
         "fixed_sin2_2theta_ee",
-        "cls_asymptotic",
+        "cls_quadratic",
         r"$\sin^2(2\theta_{ee})$",
         r"Fig. 3b: analytic $CL_s$",
     ),

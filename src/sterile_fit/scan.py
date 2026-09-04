@@ -14,7 +14,7 @@ from sterile_fit.adapter import _hypothesis_pairs, extended_hypothesis_pairs, bu
 from sterile_fit.adapter import load_analysis_selection
 from sterile_fit.core.profile_three_plus_one import profile_appearance_amplitude_grid, profile_electron_disappearance_grid, profile_grid, profile_s14_s24_at_fixed_sin2_2theta_ee, profile_s14_s24_at_fixed_sin2_2theta_mue, profile_three_plus_one
 from sterile_fit.core.three_plus_one import ThreePlusOneParameters
-from sterile_fit.core.calibration import GaussianHypothesis, asymptotic_cls, prepare_fixed_test_statistic, toy_cls
+from sterile_fit.core.calibration import GaussianHypothesis, quadratic_cls, prepare_fixed_test_statistic, toy_cls
 from sterile_fit.core.likelihood import solve_quadratic_form
 from sterile_fit.core.one_plus_three_plus_one import OnePlusThreePlusOneParameters
 from sterile_fit.adapter import build_one_plus_three_plus_one_analysis
@@ -125,7 +125,7 @@ def _adaptive_toy_candidate_mask(
         raise ValueError("adaptive analytic CLs bounds must bracket 0.05 inside [0, 1]")
     if neighbour_padding < 0:
         raise ValueError("adaptive neighbour padding must be non-negative")
-    required = {"fixed_delta_m2_41_eV2", x_name, "cls_asymptotic"}
+    required = {"fixed_delta_m2_41_eV2", x_name, "cls_quadratic"}
     missing = required.difference(result_table.columns)
     if missing:
         raise ValueError(f"adaptive candidate table is missing columns: {sorted(missing)}")
@@ -133,7 +133,7 @@ def _adaptive_toy_candidate_mask(
     for _, group in result_table.groupby("fixed_delta_m2_41_eV2", sort=False):
         ordered = group.sort_values(x_name)
         indices = ordered.index.to_numpy(dtype=int)
-        values = ordered["cls_asymptotic"].to_numpy(dtype=float)
+        values = ordered["cls_quadratic"].to_numpy(dtype=float)
         local = (values >= lower_analytic_cls) & (values <= upper_analytic_cls)
         crossing = np.flatnonzero(
             (values[:-1] - threshold) * (values[1:] - threshold) <= 0.0
@@ -247,7 +247,7 @@ def scan_three_plus_one() -> None:
         raise ValueError("--number-of-toys must be at least 2 per hypothesis")
     if toy_enabled and arguments.toy_workers < 1:
         raise ValueError("--toy-workers must be at least 1")
-    if toy_enabled and arguments.scan_workers < 1:
+    if arguments.scan_workers < 1:
         raise ValueError("--scan-workers must be at least 1")
     if toy_enabled and arguments.scan_workers > 1 and arguments.toy_workers > 1:
         raise ValueError(
@@ -371,21 +371,29 @@ def scan_three_plus_one() -> None:
         result_table["chi2"] - chi2_3nu
     )
     if arguments.cls_calibration in {"analytic", "adaptive-toy"}:
-        cls_rows = []
-        for tested_parameters, observed_test_statistic in zip(
+        calibration_inputs = list(zip(
             row_parameters,
             result_table["test_statistic_chi2_4nu_minus_chi2_3nu"],
             strict=True,
-        ):
-            cls_rows.append(asymptotic_cls(
+        ))
+
+        def evaluate_quadratic(item):
+            tested_parameters, observed_test_statistic = item
+            return quadratic_cls(
                 float(observed_test_statistic),
                 _hypothesis_pairs(analysis, null_parameters, tested_parameters),
-            ))
-        result_table["p_value_4nu_asymptotic"] = [item.p_value_4nu for item in cls_rows]
-        result_table["p_value_3nu_asymptotic"] = [item.p_value_3nu for item in cls_rows]
-        result_table["cls_asymptotic"] = [item.cls for item in cls_rows]
+            )
+
+        if arguments.scan_workers == 1:
+            cls_rows = [evaluate_quadratic(item) for item in calibration_inputs]
+        else:
+            with ThreadPoolExecutor(max_workers=arguments.scan_workers) as executor:
+                cls_rows = list(executor.map(evaluate_quadratic, calibration_inputs))
+        result_table["p_value_4nu_quadratic"] = [item.p_value_4nu for item in cls_rows]
+        result_table["p_value_3nu_quadratic"] = [item.p_value_3nu for item in cls_rows]
+        result_table["cls_quadratic"] = [item.cls for item in cls_rows]
     if arguments.cls_calibration == "analytic":
-        cls_column = "cls_asymptotic"
+        cls_column = "cls_quadratic"
     else:
         if arguments.cls_calibration == "toy":
             candidate_mask = np.ones(len(result_table), dtype=bool)
@@ -574,7 +582,7 @@ def scan_three_plus_one() -> None:
                 raise RuntimeError("complete Toy calibration left unevaluated scan points")
             cls_column = "cls_toy"
         else:
-            result_table["cls_adaptive_hybrid"] = result_table["cls_asymptotic"]
+            result_table["cls_adaptive_hybrid"] = result_table["cls_quadratic"]
             result_table.loc[evaluated_mask, "cls_adaptive_hybrid"] = result_table.loc[
                 evaluated_mask, "cls_toy"
             ]
@@ -628,9 +636,9 @@ def scan_three_plus_one() -> None:
                 "empirical Toy MC under both hypotheses; no assumed test-statistic distribution"
                 if arguments.cls_calibration == "toy"
                 else (
-                    "global analytic CLs with fixed-hypothesis Toy MC only in the declared adaptive contour band"
+                    "global quadratic-form CLs with fixed-hypothesis Toy MC only in the declared adaptive contour band"
                     if arguments.cls_calibration == "adaptive-toy"
-                    else "analytic moment-matched Gaussian approximation; no Toy MC"
+                    else "fixed-hypothesis generalized quadratic-form inversion; no Toy MC"
                 )
             ),
             "tail": "right-tailed under both fixed hypotheses",
@@ -833,11 +841,11 @@ def scan_one_plus_three_plus_one() -> None:
             calibration_note = "tested spectrum equals the nested 3nu boundary"
             toy_count_4nu = toy_count_3nu = -1
         elif arguments.cls_calibration == "analytic":
-            comparison = asymptotic_cls(observed_test_statistic, pairs)
+            comparison = quadratic_cls(observed_test_statistic, pairs)
             cls_value = comparison.cls
             p_4nu = comparison.p_value_4nu
             p_3nu = comparison.p_value_3nu
-            calibration_note = "Gaussian moment approximation; no pseudo-experiments"
+            calibration_note = "fixed-hypothesis generalized quadratic-form inversion; no pseudo-experiments"
             toy_count_4nu = toy_count_3nu = -1
         else:
             null_hypotheses = tuple(pair[0] for pair in pairs)

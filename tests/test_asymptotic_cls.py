@@ -1,13 +1,13 @@
 import numpy as np
 import pytest
 
-from sterile_fit.core.calibration import GaussianHypothesis, asymptotic_cls
+from sterile_fit.core.calibration import GaussianHypothesis, quadratic_cls
 
 
-def test_common_covariance_has_known_test_statistic_moments() -> None:
+def test_common_covariance_has_known_quadratic_law() -> None:
     null = GaussianHypothesis(np.array([0.0]), np.array([[1.0]]))
     tested = GaussianHypothesis(np.array([2.0]), np.array([[1.0]]))
-    result = asymptotic_cls(0.0, [(null, tested)])
+    result = quadratic_cls(0.0, [(null, tested)])
 
     # For common covariance, D=(mu4-mu3)^T C^-1 (mu4-mu3)=4 and
     # chi2_4-chi2_3 is N(+D,4D) under 3nu and N(-D,4D) under 4nu.
@@ -20,6 +20,6 @@ def test_common_covariance_has_known_test_statistic_moments() -> None:
     assert result.cls == pytest.approx(0.18857341734506025)
 
 
-def test_asymptotic_cls_rejects_non_positive_definite_covariance() -> None:
+def test_quadratic_cls_rejects_non_positive_definite_covariance() -> None:
     with pytest.raises(np.linalg.LinAlgError):
         GaussianHypothesis(np.array([0.0]), np.array([[0.0]]))

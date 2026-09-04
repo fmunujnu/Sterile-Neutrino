@@ -23,7 +23,7 @@ def test_adaptive_toy_mask_selects_wide_band_and_neighbours_per_mass_row() -> No
     table = pd.DataFrame({
         "fixed_delta_m2_41_eV2": [1.0] * 5 + [2.0] * 5,
         "fixed_sin2_2theta_mue": [1e-4, 1e-3, 1e-2, 1e-1, 1.0] * 2,
-        "cls_asymptotic": [1.0, 0.5, 0.2, 0.04, 0.001] + [0.8] * 5,
+        "cls_quadratic": [1.0, 0.5, 0.2, 0.04, 0.001] + [0.8] * 5,
     })
     selected = _adaptive_toy_candidate_mask(
         table,
@@ -39,7 +39,7 @@ def test_adaptive_toy_mask_requires_band_to_bracket_threshold() -> None:
     table = pd.DataFrame({
         "fixed_delta_m2_41_eV2": [1.0, 1.0],
         "fixed_sin2_2theta_mue": [0.01, 0.1],
-        "cls_asymptotic": [0.2, 0.01],
+        "cls_quadratic": [0.2, 0.01],
     })
     with pytest.raises(ValueError, match="must bracket 0.05"):
         _adaptive_toy_candidate_mask(

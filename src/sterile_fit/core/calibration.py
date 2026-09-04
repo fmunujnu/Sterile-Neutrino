@@ -6,13 +6,14 @@ from math import exp, isfinite
 from typing import Iterable
 import numpy as np
 from numpy.typing import NDArray
-from scipy.linalg import cho_factor, cho_solve
+from scipy.linalg import cho_factor, cho_solve, eigh
+from scipy.integrate import simpson
 from scipy.stats import norm
 from concurrent.futures import ThreadPoolExecutor
 from math import isfinite, sqrt
 from typing import Callable, Iterable, Sequence
 from scipy.linalg import cholesky, solve_triangular
-# Deterministic Gaussian approximation to the paper's pointwise CLs test.
+# Deterministic fixed-hypothesis quadratic-form calibration of pointwise CLs.
 
 
 FloatVector = NDArray[np.float64]
@@ -53,6 +54,163 @@ class AsymptoticClsResult:
     standard_deviation_under_4nu: float
     mean_under_3nu: float
     standard_deviation_under_3nu: float
+
+
+class QuadraticDifferenceLaw:
+    """Law of T = c + sum(lambda_i*z_i**2 + b_i*z_i), z_i~N(0,1)."""
+
+    def __init__(self, constant: float, eigenvalues, linear) -> None:
+        self.constant = float(constant)
+        self.eigenvalues = np.asarray(eigenvalues, dtype=float)
+        self.linear = np.asarray(linear, dtype=float)
+        if self.eigenvalues.shape != self.linear.shape:
+            raise ValueError("quadratic and linear coefficient dimensions differ")
+        self.mean = self.constant + float(np.sum(self.eigenvalues))
+        variance = 2.0 * float(np.sum(self.eigenvalues**2)) + float(
+            self.linear @ self.linear
+        )
+        self.standard_deviation = float(np.sqrt(variance))
+        if not isfinite(self.standard_deviation) or self.standard_deviation <= 0.0:
+            raise ValueError("quadratic-form law is non-finite or degenerate")
+
+    def _standardized_characteristic_function(self, frequencies: FloatVector):
+        frequencies = np.asarray(frequencies, dtype=float)
+        result = np.empty(frequencies.size, dtype=complex)
+        quadratic = self.eigenvalues / self.standard_deviation
+        linear = self.linear / self.standard_deviation
+        for start in range(0, frequencies.size, 256):
+            frequency = frequencies[start : start + 256, None]
+            denominator = 1.0 - 2.0j * frequency * quadratic
+            log_characteristic = (
+                -1.0j * frequency * quadratic
+                - 0.5 * np.log(denominator)
+                - 0.5 * frequency**2 * linear**2 / denominator
+            ).sum(axis=1)
+            result[start : start + 256] = np.exp(log_characteristic)
+        return result
+
+    def _truncation_bound(self, cutoff: float) -> float:
+        coefficients = np.sort(
+            np.abs(self.eigenvalues / self.standard_deviation)
+        )[::-1]
+        coefficients = coefficients[coefficients > 0.0]
+        if coefficients.size:
+            count = np.arange(1, coefficients.size + 1)
+            logarithms = (
+                -0.5 * np.cumsum(np.log(2.0 * coefficients))
+                - 0.5 * count * np.log(cutoff)
+                - np.log(count / 2.0)
+                - np.log(np.pi)
+            )
+            return float(np.exp(np.min(logarithms)))
+        return float(np.exp(-cutoff**2 / 2.0) / (np.pi * cutoff**2))
+
+    def survival_probabilities(self, values) -> FloatVector:
+        """Gil-Pelaez inversion with truncation and mesh-refinement checks."""
+        standardized_values = (
+            np.atleast_1d(np.asarray(values, dtype=float)) - self.mean
+        ) / self.standard_deviation
+        cutoff = 32.0
+        while self._truncation_bound(cutoff) > 1.0e-9:
+            cutoff *= 2.0
+            if cutoff > 4096.0:
+                raise ArithmeticError("quadratic characteristic function decays too slowly")
+        spacing = min(
+            0.025,
+            np.pi / (12.0 * (1.0 + float(np.max(np.abs(standardized_values))))),
+        )
+        intervals = int(np.ceil(cutoff / spacing / 2.0)) * 2
+        previous = None
+        for _ in range(4):
+            frequencies = np.linspace(0.0, cutoff, intervals + 1)
+            characteristic = self._standardized_characteristic_function(frequencies)
+            survival = np.empty(standardized_values.size, dtype=float)
+            for start in range(0, standardized_values.size, 32):
+                selected = standardized_values[start : start + 32]
+                product = (
+                    np.exp(-1.0j * frequencies[:, None] * selected[None, :])
+                    * characteristic[:, None]
+                )
+                integrand = np.empty(product.shape, dtype=float)
+                integrand[1:] = product.imag[1:] / frequencies[1:, None]
+                integrand[0] = -selected
+                survival[start : start + 32] = (
+                    0.5 + simpson(integrand, x=frequencies, axis=0) / np.pi
+                )
+            if previous is not None and np.max(np.abs(survival - previous)) < 2.0e-7:
+                if np.min(survival) < -2.0e-7 or np.max(survival) > 1.0 + 2.0e-7:
+                    raise ArithmeticError("quadratic inversion produced an invalid probability")
+                return np.clip(survival, 0.0, 1.0)
+            previous = survival
+            intervals *= 2
+        raise ArithmeticError("quadratic inversion mesh did not converge")
+
+    def survival_probability(self, value: float) -> float:
+        return float(self.survival_probabilities([value])[0])
+
+
+def _quadratic_difference_law(
+    hypothesis_pairs: Iterable[tuple[GaussianHypothesis, GaussianHypothesis]],
+    *,
+    generated_under_tested: bool,
+) -> QuadraticDifferenceLaw:
+    constant = 0.0
+    eigenvalues: list[float] = []
+    linear_terms: list[float] = []
+    for null_3nu, tested_4nu in hypothesis_pairs:
+        generated = tested_4nu if generated_under_tested else null_3nu
+        generated_cholesky = cholesky(
+            generated.covariance, lower=True, check_finite=True
+        )
+        null_factor = cho_factor(null_3nu.covariance, lower=True, check_finite=True)
+        tested_factor = cho_factor(tested_4nu.covariance, lower=True, check_finite=True)
+        offset_3nu = generated.mean - null_3nu.mean
+        offset_4nu = generated.mean - tested_4nu.mean
+        solved_3nu = cho_solve(null_factor, offset_3nu, check_finite=True)
+        solved_4nu = cho_solve(tested_factor, offset_4nu, check_finite=True)
+        constant += float(offset_4nu @ solved_4nu - offset_3nu @ solved_3nu)
+        matrix = generated_cholesky.T @ (
+            cho_solve(tested_factor, generated_cholesky, check_finite=True)
+            - cho_solve(null_factor, generated_cholesky, check_finite=True)
+        )
+        matrix = 0.5 * (matrix + matrix.T)
+        weights, rotation = eigh(matrix, check_finite=True)
+        eigenvalues.extend(weights)
+        linear_terms.extend(
+            rotation.T
+            @ (2.0 * generated_cholesky.T @ (solved_4nu - solved_3nu))
+        )
+    return QuadraticDifferenceLaw(constant, eigenvalues, linear_terms)
+
+
+def quadratic_cls(
+    observed_test_statistic: float,
+    hypothesis_pairs: Iterable[tuple[GaussianHypothesis, GaussianHypothesis]],
+) -> AsymptoticClsResult:
+    """Compute fixed-hypothesis CLs from the generalized quadratic-form law."""
+    if not isfinite(observed_test_statistic):
+        raise ValueError("observed test statistic must be finite")
+    pairs = tuple(hypothesis_pairs)
+    if not pairs:
+        raise ValueError("at least one hypothesis pair is required")
+    law_3nu = _quadratic_difference_law(pairs, generated_under_tested=False)
+    law_4nu = _quadratic_difference_law(pairs, generated_under_tested=True)
+    p_3nu = law_3nu.survival_probability(observed_test_statistic)
+    p_4nu = law_4nu.survival_probability(observed_test_statistic)
+    if p_3nu <= 0.0:
+        cls = 1.0 if p_4nu <= 0.0 else float("inf")
+    else:
+        cls = min(1.0, p_4nu / p_3nu)
+    return AsymptoticClsResult(
+        test_statistic=float(observed_test_statistic),
+        p_value_4nu=p_4nu,
+        p_value_3nu=p_3nu,
+        cls=cls,
+        mean_under_4nu=law_4nu.mean,
+        standard_deviation_under_4nu=law_4nu.standard_deviation,
+        mean_under_3nu=law_3nu.mean,
+        standard_deviation_under_3nu=law_3nu.standard_deviation,
+    )
 
 
 def _quadratic_difference_moments(
