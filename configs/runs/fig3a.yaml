@@ -1,0 +1,15 @@
+model: "3+1"
+# Preserves the previous generate_joint_figures.py Fig3a settings.
+arguments:
+  - "--analysis-config"
+  - "configs/analyses/microboone_bnb_numi.yaml"
+  - "--mode"
+  - "appearance-profile"
+  - "--sin2-2theta-mue-min"
+  - "1e-4"
+  - "--sin2-2theta-mue-max"
+  - "1"
+  - "--delta-m2-min-eV2"
+  - "1e-2"
+  - "--delta-m2-max-eV2"
+  - "1e2"

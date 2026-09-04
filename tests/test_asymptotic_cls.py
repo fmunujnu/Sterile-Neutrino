@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from sterile_fit.statistics import GaussianHypothesis, asymptotic_cls
+from sterile_fit.core.calibration import GaussianHypothesis, asymptotic_cls
 
 
 def test_common_covariance_has_known_test_statistic_moments() -> None:

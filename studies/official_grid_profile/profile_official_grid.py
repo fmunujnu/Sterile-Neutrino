@@ -12,8 +12,13 @@ from matplotlib.lines import Line2D
 import numpy as np
 import pandas as pd
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+from sterile_fit.output import result_directory
 
-ROOT = Path(__file__).resolve().parents[3]
+
+ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_GRID = (
     ROOT
     / "data"
@@ -22,7 +27,7 @@ DEFAULT_GRID = (
     / "shared"
     / "microboone_material_gridscan_numi_dm2_t14_t24_dchi2.txt"
 )
-DEFAULT_OUTPUT = ROOT / "outputs" / "paper_reproduction" / "official_grid_wilks"
+DEFAULT_OUTPUT = result_directory("studies", "official_grid_wilks", "results")
 WILKS_95_LEVEL = 5.99
 
 

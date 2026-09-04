@@ -1,6 +1,6 @@
 import numpy as np
 
-from sterile_fit.experiments.microboone.bnb.archival_response import load_archival_reco_given_true
+from sterile_fit.experiments.microboone.response import load_archival_reco_given_true
 from sterile_fit.paths import REPOSITORY_ROOT
 
 

@@ -1,5 +1,5 @@
 {
-  "include": ["src", "scripts", "tests"],
+  "include": ["src", "run.py", "tests"],
   "executionEnvironments": [
     {
       "root": ".",

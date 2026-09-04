@@ -2,14 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from scripts.experiments.microboone.numi.build_paper_weighted_flux import (
-    FHC_EXPOSURE_FRACTION,
-    RHC_EXPOSURE_FRACTION,
-    SIN2_2THETA_MUE,
-    SIN2_THETA24_VALUES,
-    _oscillated_mode_flux,
-    _parameters,
-)
+from sterile_fit.experiments.microboone.numi import FLUX_FHC_EXPOSURE_FRACTION as FHC_EXPOSURE_FRACTION, FLUX_RHC_EXPOSURE_FRACTION as RHC_EXPOSURE_FRACTION, FLUX_SIN2_2THETA_MUE as SIN2_2THETA_MUE, FLUX_SIN2_THETA24_VALUES as SIN2_THETA24_VALUES, flux_oscillated_mode_flux as _oscillated_mode_flux, flux_parameters as _parameters
 
 
 def test_paper_parameter_conversion_preserves_exact_appearance_amplitude() -> None:

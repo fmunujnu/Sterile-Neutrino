@@ -15,6 +15,11 @@ from pdf_extract import (  # noqa: E402
     select_target_curve,
 )
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+from sterile_fit.output import result_directory
+
 
 PANELS = [
     (11, "fhc_numu", 0.12, 0.50, 0.27, 0.47, False),
@@ -84,7 +89,7 @@ def main() -> int:
         finally:
             document.close()
 
-    output = STUDY_ROOT.parents[1] / "outputs" / "checks" / "numi_flux_pdf_extraction"
+    output = result_directory("studies", "numi_flux_pdf_extraction", "results")
     output.mkdir(parents=True, exist_ok=True)
     report = {
         "status": "pass" if all(item["status"] == "pass" for item in results) else "fail",

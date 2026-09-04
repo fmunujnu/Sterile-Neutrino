@@ -25,6 +25,11 @@ from pdf_extract import (  # noqa: E402
     select_target_curve,
 )
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+from sterile_fit.output import result_directory
+
 
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
@@ -187,7 +192,7 @@ def main() -> int:
     parser.add_argument(
         "--output",
         type=Path,
-        default=STUDY_ROOT.parents[1] / "outputs" / "checks" / "numi_flux_pdf_extraction" / "minerva_numu_fhc",
+        default=result_directory("studies", "numi_flux_pdf_extraction", "results") / "minerva_numu_fhc",
     )
     args = parser.parse_args()
     config = json.loads(args.config.read_text(encoding="utf-8"))

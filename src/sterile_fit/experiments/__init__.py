@@ -1,2 +1,1 @@
-"""Experiment-specific data adapters and prediction workflows."""
-
+"""Package marker. Import concrete modules explicitly."""

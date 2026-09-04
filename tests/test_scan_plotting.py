@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from scripts.scan import _adaptive_toy_candidate_mask, _log_cell_edges
+from sterile_fit.scan import _adaptive_toy_candidate_mask, _log_cell_edges
 
 
 def test_log_cell_edges_use_geometric_midpoints() -> None:

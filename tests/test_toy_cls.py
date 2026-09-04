@@ -1,15 +1,10 @@
 import numpy as np
 import pytest
 
-from sterile_fit.statistics import (
-    GaussianHypothesis,
-    fixed_hypothesis_chi2,
-    prepare_fixed_hypothesis_chi2,
-    toy_cls,
-)
+from sterile_fit.core.calibration import GaussianHypothesis, fixed_hypothesis_chi2, prepare_fixed_hypothesis_chi2, prepare_fixed_test_statistic, toy_cls
 
 
-def test_toy_cls_is_seed_reproducible_and_profiles_every_toy() -> None:
+def test_toy_cls_is_seed_reproducible_and_evaluates_every_toy() -> None:
     null = GaussianHypothesis(np.array([0.0]), np.array([[1.0]]))
     tested = GaussianHypothesis(np.array([1.0]), np.array([[1.0]]))
     calls = 0
@@ -40,6 +35,14 @@ def test_toy_cls_is_seed_reproducible_and_profiles_every_toy() -> None:
     assert first.test_statistics_under_3nu == pytest.approx(
         second.test_statistics_under_3nu
     )
+
+
+def test_fixed_test_statistic_freezes_both_hypotheses() -> None:
+    null = GaussianHypothesis(np.array([0.0]), np.array([[1.0]]))
+    tested = GaussianHypothesis(np.array([2.0]), np.array([[4.0]]))
+    statistic = prepare_fixed_test_statistic((null,), (tested,))
+    dataset = (np.array([1.0]),)
+    assert statistic(dataset) == pytest.approx(0.25 - 1.0)
 
 
 def test_toy_batch_size_does_not_change_multiple_component_random_streams() -> None:

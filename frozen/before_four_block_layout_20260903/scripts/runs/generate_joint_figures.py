@@ -9,7 +9,7 @@ import subprocess
 import sys
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 JOINT_CONFIG = ROOT / "configs" / "analyses" / "microboone_bnb_numi.yaml"
 
 
@@ -27,7 +27,7 @@ def main() -> None:
     destination = arguments.output_directory or (
         ROOT
         / "outputs"
-        / "paper_reproduction"
+        / "run1_non_toy"
         / datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ_microboone_bnb_numi")
     )
     destination.mkdir(parents=True, exist_ok=False)
@@ -40,7 +40,7 @@ def main() -> None:
         str(destination / "bnb_numi_spectra.png"),
     ])
     _run([
-        "scripts/scan.py",
+        "scripts/runs/run1_non_toy.py",
         "--analysis-config",
         str(JOINT_CONFIG),
         "--mode",
@@ -55,7 +55,7 @@ def main() -> None:
         str(destination / "fig3a_sin2_2theta_mue"),
     ])
     _run([
-        "scripts/scan.py",
+        "scripts/runs/run1_non_toy.py",
         "--analysis-config",
         str(JOINT_CONFIG),
         "--mode",

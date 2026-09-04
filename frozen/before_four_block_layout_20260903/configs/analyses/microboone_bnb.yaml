@@ -1,0 +1,14 @@
+analysis_name: "microboone_bnb_four_channel_only"
+experiments:
+  - experiment_id: "microboone.bnb.four_channel"
+    include: true
+    status: "validated_surrogate"
+    correlation_group: "microboone_2025_release"
+    configuration: "configs/experiments/microboone/bnb/analysis.yaml"
+    note: "Active 104-bin BNB empirical reweighting likelihood."
+  - experiment_id: "microboone.numi"
+    include: false
+    status: "inputs_unavailable"
+    correlation_group: "microboone_2025_release"
+    configuration: "configs/experiments/microboone/numi/analysis.yaml"
+    note: "Diagnostic 104-bin event adapter exists, but no validated NuMI likelihood is registered; BNB remains the only included analysis."

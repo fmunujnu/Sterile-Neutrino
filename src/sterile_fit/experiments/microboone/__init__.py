@@ -1,2 +1,1 @@
-"""MicroBooNE analyses, separated by neutrino beam."""
-
+"""Package marker. Import concrete modules explicitly."""

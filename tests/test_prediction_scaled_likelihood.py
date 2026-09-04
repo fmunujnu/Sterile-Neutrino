@@ -1,8 +1,8 @@
 import numpy as np
 import pytest
 
-from sterile_fit.likelihood import PredictionScaledGaussianLikelihood
-from sterile_fit.covariance import solve_quadratic_form
+from sterile_fit.core.likelihood import PredictionScaledGaussianLikelihood
+from sterile_fit.core.likelihood import solve_quadratic_form
 
 
 def test_prediction_scaled_covariance_matches_reference_definition() -> None:

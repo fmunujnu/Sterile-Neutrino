@@ -1,15 +1,7 @@
 import pytest
 
-from sterile_fit.fitting import (
-    prefit_three_plus_one,
-    profile_appearance_amplitude_grid,
-    profile_electron_disappearance_grid,
-    profile_s14_s24_at_fixed_sin2_2theta_ee,
-    profile_s14_s24_at_fixed_sin2_2theta_mue,
-    profile_grid,
-    profile_three_plus_one,
-)
-from sterile_fit.parameters import ThreePlusOneParameters
+from sterile_fit.core.profile_three_plus_one import profile_appearance_amplitude_grid, profile_electron_disappearance_grid, profile_s14_s24_at_fixed_sin2_2theta_ee, profile_s14_s24_at_fixed_sin2_2theta_mue, profile_grid, profile_three_plus_one
+from sterile_fit.core.three_plus_one import ThreePlusOneParameters
 
 
 def _objective(parameters: ThreePlusOneParameters) -> float:
@@ -37,7 +29,7 @@ def test_profile_grid_keeps_each_scan_coordinate_fixed() -> None:
     assert [item.best_fit.parameters.delta_m2_41_eV2 for item in results] == [0.8, 1.2]
 
 
-def test_prefit_explicitly_checks_zero_appearance_boundary() -> None:
+def test_zero_appearance_profile_explicitly_checks_boundary() -> None:
     def boundary_objective(parameters: ThreePlusOneParameters) -> float:
         return (
             (parameters.delta_m2_41_eV2 - 1.0) ** 2
@@ -45,9 +37,11 @@ def test_prefit_explicitly_checks_zero_appearance_boundary() -> None:
             + parameters.sin2_theta24
         )
 
-    result = prefit_three_plus_one(boundary_objective, seed=3)
-    assert result.parameters.sin2_theta24 == 0.0
-    assert result.chi2 < 1e-8
+    result = profile_s14_s24_at_fixed_sin2_2theta_mue(
+        boundary_objective, delta_m2_41_eV2=1.0, sin2_2theta_mue=0.0
+    )
+    assert result.best_fit.parameters.sin2_theta24 == 0.0
+    assert result.best_fit.chi2 < 1e-8
 
 
 def test_fixed_appearance_amplitude_profiles_only_the_physical_curve() -> None:

@@ -1,6 +1,6 @@
 import numpy as np
 
-from sterile_fit.experiments.microboone.bnb.published_inputs import load_bnb_four_channel_inputs, read_full_systematic_covariance
+from sterile_fit.experiments.microboone.public_data import load_bnb_four_channel_inputs, read_full_systematic_covariance
 
 
 def test_public_input_selection_is_explicit_and_well_formed() -> None:

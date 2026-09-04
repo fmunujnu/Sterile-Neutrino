@@ -1,13 +1,7 @@
 import numpy as np
 
-from sterile_fit.experiments.microboone.numi.binning import (
-    NUMI_FOUR_CHANNELS,
-    numi_four_channel_published_indices,
-)
-from sterile_fit.experiments.microboone.numi.published_inputs import (
-    PublishedNumiFourChannelInputs,
-    load_numi_four_channel_inputs,
-)
+from sterile_fit.experiments.microboone.public_data import NUMI_FOUR_CHANNELS, numi_four_channel_published_indices
+from sterile_fit.experiments.microboone.public_data import PublishedNumiFourChannelInputs, load_numi_four_channel_inputs
 import pytest
 
 

@@ -2,7 +2,7 @@ import math
 
 import pytest
 
-from sterile_fit.parameters import ThreePlusOneParameters
+from sterile_fit.core.three_plus_one import ThreePlusOneParameters
 
 
 @pytest.mark.parametrize("invalid", [float("nan"), float("inf"), float("-inf")])

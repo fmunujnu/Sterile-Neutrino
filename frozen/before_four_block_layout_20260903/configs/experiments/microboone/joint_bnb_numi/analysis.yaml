@@ -1,0 +1,11 @@
+analysis_name: "microboone_bnb_numi_four_channel_joint_diagnostic"
+combination_rule: "single 208-bin quadratic form with released BNB-NuMI cross-covariance"
+scientific_status: "approximate detector model; statistically joint covariance treatment"
+bin_order:
+  - "BNB nue_cc_fc,nue_cc_pc,numu_cc_fc,numu_cc_pc; 104 bins"
+  - "NuMI nue_cc_fc,nue_cc_pc,numu_cc_fc,numu_cc_pc; 104 bins"
+component_configs:
+  bnb: "configs/experiments/microboone/bnb/analysis.yaml"
+  numi: "configs/experiments/microboone/numi/analysis.yaml"
+released_covariance: "data/experiments/microboone/shared/raw/hepdata_microboone_2025/HEPData-ins3088922-v1-14_channel_covariance_matrix.csv"
+warning: "NuMI still borrows the BNB Reco prior, omits 3--5 GeV response support and freezes aggregate Background; the joint chi2 is not a collaboration-exact likelihood."

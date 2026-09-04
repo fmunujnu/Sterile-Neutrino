@@ -1,9 +1,9 @@
 import numpy as np
 import pytest
 
-from sterile_fit.parameters import ThreePlusOneParameters
-from sterile_fit.experiments.microboone.bnb.prediction import BnbFourChannelPredictor
-from sterile_fit.experiments.microboone.bnb.templates import BnbFourChannelOscillationTemplates
+from sterile_fit.core.three_plus_one import ThreePlusOneParameters
+from sterile_fit.experiments.microboone.bnb import BnbFourChannelPredictor
+from sterile_fit.experiments.microboone.bnb import BnbFourChannelOscillationTemplates
 
 
 def _templates() -> BnbFourChannelOscillationTemplates:

@@ -1,20 +1,16 @@
 import numpy as np
 from pathlib import Path
 
-from sterile_fit.analysis.registry import build_three_plus_one_analysis
-from sterile_fit.analysis.selection import load_analysis_selection
-from sterile_fit.experiments.microboone.bnb.binning import bnb_four_channel_indices
-from sterile_fit.experiments.microboone.joint_bnb_numi import (
-    joint_bnb_numi_published_indices,
-)
-from sterile_fit.experiments.microboone.numi.binning import (
-    numi_four_channel_published_indices,
-)
-from sterile_fit.experiments.microboone.bnb.published_inputs import read_full_systematic_covariance
-from sterile_fit.experiments.microboone.bnb.workflow import build_strict_bnb_workflow
-from sterile_fit.experiments.microboone.joint_bnb_numi import build_joint_microboone_bnb_numi_workflow
-from sterile_fit.experiments.microboone.numi.workflow import build_diagnostic_numi_workflow
-from sterile_fit.parameters import ThreePlusOneParameters
+from sterile_fit.adapter import build_three_plus_one_analysis
+from sterile_fit.adapter import load_analysis_selection
+from sterile_fit.experiments.microboone.public_data import bnb_four_channel_indices
+from sterile_fit.experiments.microboone.joint import joint_bnb_numi_published_indices
+from sterile_fit.experiments.microboone.public_data import numi_four_channel_published_indices
+from sterile_fit.experiments.microboone.public_data import read_full_systematic_covariance
+from sterile_fit.experiments.microboone.bnb import build_strict_bnb_workflow
+from sterile_fit.experiments.microboone.joint import build_joint_microboone_bnb_numi_workflow
+from sterile_fit.experiments.microboone.numi import build_diagnostic_numi_workflow
+from sterile_fit.core.three_plus_one import ThreePlusOneParameters
 import yaml
 
 

@@ -1,182 +1,56 @@
-# MicroBooNE BNB analysis rules
+# 长期协作原则
 
-## Active scientific scope
+本文只放长期不变的约束，不放当前文件清单、实验可用状态、扫描范围或运行时间。
+当前实现看 README.md、docs/ARCHITECTURE.md；改动后的同步要求看 docs/MAINTENANCE.md。
+用户的新要求优先于本文；不要借结构整理擅自改变科学方法。
 
-- Active code is a BNB-only four-channel (104 reconstructed-bin) 3+1 analysis.
-- The active channels are `nue_cc_fc`, `nue_cc_pc`, `numu_cc_fc`, and `numu_cc_pc`.
-- NuMI, BNB pi0/NC channels, 1+3+1 physics, and multi-experiment combinations are outside the active likelihood until their own declared inputs and validations exist.
-- Never describe an output as the MicroBooNE Collaboration result, an internal-MC reproduction, or a full BNB+NuMI fit.
-- Experiment-specific readers, adapters, response templates, and plots live under `experiments/<detector>/<beam>/`; shared physics and statistics must not import beam-specific file layouts.
-- `configs/analyses/*.yaml` is the only authority for selecting contributions to a combined scan. An entry marked `inputs_unavailable` must fail if enabled.
+## 科学与数值边界
 
-## Parameter contract
+- 结构迁移只改变文件组织、导入和调度，不改变概率、单位、基线、通道选择、背景含义、数据或统计方法。
+- 不通过改变求和顺序、参数化、优化器、容差、初值、边界或分支来“顺手优化”。性能或科学修改须另行授权并验证。
+- 明确区分质量与质量平方差、角度与角度的正弦平方、有效振幅与真实参数。名称携带必要单位；注释说明约束和相位约定。
+- profile 固定被扫描坐标，并按明确边界最小化其余活动参数。数值优化得到的极小值不是未经证明的数学全局最小值。
+- 活动推断以 profile 为基础。独立全局 fit/prefit 不作为日常入口；不得把它重新塞入默认扫描。
+- 是否近似校准检验量分布，必须作为显式方法选择。不得把解析近似、混合结果标为全 Toy 结果。
+- 不把经验锚点闭合或谱形相似描述成内部 MC、合作组精确复现或独立物理验证。公开数据无法确定的假设须保留记录。
+- 结构整理不得顺手裁决论文数据含义、统计选择或模型有效性争议；这类工作须另行提出证据和修改方案。
 
-- Public APIs and configuration use only `delta_m2_41_eV2`, `sin2_theta14`, and `sin2_theta24`.
-- `delta_m2_41_eV2` means Δm²41 in eV², never a mass, a square root, or a logarithm.
-- `sin2_theta14` and `sin2_theta24` mean sin² of the named angle. Convert to radians only in `parameters.py`.
-- Do not introduce bare names such as `dm41`, `theta14`, `mixing`, or `amplitude` in active code.
-- The exact appearance amplitude must be derived from the mixing matrix; do not silently substitute a small-angle formula.
-- Read the BNB baseline from `configs/experiments/microboone/bnb/analysis.yaml`. The active value is `0.4685 km`; never copy the frozen `0.541 km` value into active MicroBooNE code.
-- The active 3+1 probability is the paper's short-baseline limit: the first three mass states are degenerate and only `delta_m2_41_eV2` drives a phase.
+## 输入和结果
 
-## Data and detector contract
+- 原始科学数据只读；可复用整理输入和 kernel 与一次性输出分开。数值内容使用 CSV/JSON/YAML 等可检查格式。
+- 不把 outputs、临时目录、图片或研究脚本作为活动预测的输入依赖。PDF 提取结果只有明确登记来源并存入 data 后才能成为输入。
+- kernel 已吸收的 flux、截面、效率、选择和迁移不得重复相乘。不同源 flavor 和反中微子成分保持物理意义清楚。
+- 不用观测数据校准参考预测。任何固定背景、借用响应、能量截断等近似都要在当前说明和 metadata 中公开。
+- 实验之间只有声明独立才能相加；相关数据必须使用完整联合协方差，不能把交叉项丢掉。
+- 协方差应显式验证，使用既定矩阵求解方法，不静默正则化、裁剪或替换统计项。
 
-- Raw files under `data/experiments/<detector>/<beam>/` or the detector's `shared/` directory are read-only. Keep source DOI and SHA-256 in the detector-level provenance file.
-- Do not silently slice a public table. Declare every channel and bin selection in `binning.py`.
-- A profile run requires an explicit 104-bin total covariance CSV plus JSON metadata and explicit CSV detector-folded true-energy templates. It must fail if any visible file is absent or malformed.
-- Active numerical inputs and scan outputs use CSV/JSON/YAML only. NPZ, pickle, opaque binary arrays, or hidden serialization conventions are forbidden.
-- A response template already contains flux, cross section, efficiency, selection and migration. Never multiply those quantities a second time. Neutrino and antineutrino templates are separate required inputs.
-- Do not calibrate predictions to observed data. The current reference closure is against the HEPData unconstrained total only; it is an empirical algebraic anchor, not evidence that this table is the paper 3nu/null prediction.
+## 模块边界
 
-## Canonical experiment layout: copy the BNB workflow
+- 四块职责：实验输入与准备；少量适配/调度；核心计算；统一输出。
+- 新实验保留自己的数据细节，通过明确的预测和协方差接口接入，不复制完整扫描器。
+- 有不同物理或数值算法的实现可保留分支；不得只为了减少文件或行数而合并成不同算法。
+- 所有实验谱复用共享渲染器。输出模块统一保存规则；调用者提供数据和具名布局，不另写同类 Matplotlib 实现。
+- 不建立旧导入路径兼容层。同步更新活动调用者、测试和说明，归档原实现。
+- 一次性工具放 studies；旧实现放 frozen。冻结材料仅可读作证据，不导入、执行或改写。
+- 小改动、一次性和半一次性任务同样沿用四块框架；研究工具调用既有计算和输出接口，不复制整套流程。只有明确成为稳定功能时才提升到活动模块。
+- 输出以来源、模型、运行批次和产物职责分层；解析与Toy属于方法选择，不另建平行代码体系。消费历史结果的工具显式接收路径，不以写死历史目录阻碍整理。
+- 移动已有输出须保留文件内容、核对哈希并记录新旧路径；历史metadata保持原样，不伪造当时的代码版本或参数。文件搬迁不等于重新计算。
+- 不把偶发检查代码、运行记录或当前数值结论写进本原则文件。
 
-The active MicroBooNE BNB layout is the sole reference for every new beam or
-experiment workflow.  Do not invent another directory layer, an
-`intermediate_checks/` tree, or a second input/output convention.  Before adding
-files, map them to these exact responsibilities:
+## Toy 与资源
 
-```text
-configs/experiments/<detector>/<beam>/analysis.yaml
-    Declares scientific status, baseline, reference parameters and visible paths.
+- 每个扫描点先对观测数据执行声明的 profile；随后固定该点的3nu/4nu预测及其协方差生成和评价全部Toy，Toy内部不再优化参数。
+- 抽样使用声明的完整协方差，不重复加入已包含的统计涨落，不裁剪负的高斯伪计数。
+- 保留既定随机数生成器、种子派生、抽样顺序、尾定义和有限样本修正。
+- 记录 Toy 数、种子、方法、参数范围和 Monte Carlo 不确定性。初步少量 Toy 不是精确尾概率验证。
+- 本机默认单进程；需要并行时先最多两进程评估资源，不嵌套重型并行，不恢复历史高进程示例。
 
-data/experiments/<detector>/shared/raw/
-    Immutable collaboration/public release shared by beams.  Store provenance
-    and hashes; readers validate the full release before selecting channels.
+## 每次变更必须做
 
-data/experiments/<detector>/<beam>/raw_response/
-    Immutable beam-specific public response source, only when not shared.
+1. 按 docs/MAINTENANCE.md 的对照表更新对应文档，不能只在对话里解释。
+2. 执行主测试和统一检查入口；涉及输入、profile、随机数或输出迁移时，追加相应负例和前后回归。
+3. 区分已验证范围、未运行内容和既有科学限制，不能把语法或测试通过扩大成全参数空间验证。
+4. 保留用户未提交的无关改动。删除活动旧文件前确认对应冻结副本；不删除科学输入和既有运行结果。
+5. 临时测试目录用独立名称，完成后清理。权限锁定目录如无法安全清理则报告，不绕过权限。
 
-data/experiments/<detector>/<beam>/inputs/
-    Human-readable primary beam inputs such as flux CSV plus provenance JSON.
-
-data/experiments/<detector>/<beam>/derived/
-    Reproducible, reusable prepared inputs: normalized Reco matrices and declared
-    covariance CSV/JSON.  No plots, fit results, test files or one-off event scans.
-
-data/experiments/<detector>/<beam>/reweighting/
-    The visible kernel contract only: true-energy grid, fixed background, all
-    source-to-final response-count CSVs, metadata and reference_closure.csv.
-
-src/sterile_fit/experiments/<detector>/<beam>/
-    Stable beam adapter API.  Follow BNB names and separation: binning.py,
-    published_inputs.py, templates.py, prediction.py and workflow.py.  A beam
-    that is not likelihood-ready may stop before workflow.py, but must not create
-    a competing interface.  Shared physics/statistics never imports this layout.
-
-scripts/experiments/<detector>/<beam>/
-    Thin reproducible orchestration only: prepare inputs, build kernel and plot a
-    single experiment.  Scripts may call src interfaces; src never imports scripts.
-
-outputs/spectra/<detector>/<beam>/
-    Regenerable figures and their same-stem CSV/metadata sidecars.
-
-outputs/scans/<analysis>/<model>/
-    Regenerable prefit/profile/parameter-space results.
-
-outputs/checks/
-    Explicit audit evidence only.  It is not an input dependency.  If a checked
-    artifact is promoted to an input, copy it to data with provenance and hash.
-```
-
-An experiment input or kernel must never depend on `outputs/`, `tmp/`, a plot,
-or a pytest directory.  `data/` may contain only reusable scientific inputs;
-`outputs/` may be deleted and regenerated without changing any prediction.
-PNG files are never numerical inputs.
-
-### Required BNB-style call boundary
-
-```text
-public/shared release + beam inputs
-    -> experiment published_inputs/binning adapter
-    -> prepared derived Reco/covariance
-    -> experiment reweighting kernel + reference closure
-    -> experiment predictor/workflow
-    -> common likelihood/profile code
-    -> outputs/spectra or outputs/scans
-```
-
-Every new beam must keep the same public API meanings as BNB.  Do not reuse BNB
-global-bin offsets, baseline, flux, covariance slice or numeric kernel.  Reuse
-only generic physics/statistics and the documented interface pattern.  Any
-temporary approximation such as a borrowed Reco matrix belongs in that beam's
-adapter metadata and must remain disabled in combined analysis selection.
-
-### One shared spectrum renderer is mandatory
-
-BNB defines the sole spectrum-plotting contract.  BNB, NuMI, another beam, and
-future experiments must call one shared rendering function; they must not each
-implement their own Matplotlib layout, stepping convention, overflow handling,
-colours, legend order, error-bar style, axis labels or CSV/metadata sidecars.
-
-Experiment-specific code may provide only a validated plotting payload:
-
-```text
-beam/channel identifiers
-reconstructed-energy edges
-Data and asymmetric errors
-Background
-Signal + Background
-named model/reference prediction vectors
-scientific labels and provenance
-```
-
-The shared renderer owns every visual and output-format decision.  Adding a new
-beam means writing or changing only its data adapter/payload builder.  If two
-beam plots look structurally different, treat that as an interface violation,
-not as acceptable experiment-specific styling.  Never copy the BNB plotting
-body into a NuMI or joint script; factor or call the existing shared renderer.
-
-### Temporary-file policy
-
-- `__pycache__/`, `.pytest_cache/`, `pytest_*`, `tmp/pytest-*`, and
-  `outputs/testing/` are disposable and must not be retained after a task.
-- Tests normally use the operating-system temporary directory.  If Windows
-  permissions require `--basetemp`, use one uniquely named workspace directory,
-  delete it immediately after the run, and never cite it as an analysis output.
-- Do not create repeated `audit_*`, `layout_*`, or `*_final2` folders.  A retained
-  audit must have a unique scientific purpose, stable name and metadata; otherwise
-  delete it after its result is reported.
-- Do not place check plots or test summaries under `data/experiments/...`.
-
-## Statistical contract
-
-- A profile point fixes the requested scan coordinates and minimizes every other active physical parameter.
-- Use `profile_three_plus_one` or `profile_grid`; do not call a fixed-grid χ² evaluation a profile likelihood.
-- Paper-like pointwise exclusion uses `CLs=p_4nu/p_3nu` from the right tail of
-  `T=chi2_4nu-chi2_3nu`.  The production calibration is Toy MC under both
-  hypotheses.  A Gaussian moment approximation may remain only as an explicitly
-  selected fast diagnostic and must never be labelled Toy-calibrated.
-- Every Toy MC pseudo-experiment must repeat the same physical profile as the
-  observed scan point.  Holding the observed-data nuisance optimum fixed while
-  evaluating toys is not a profiled Toy result.
-- Generate pseudo-data with the full covariance already used by the Gaussian
-  likelihood.  Because its diagonal already contains the chosen Pearson count
-  variance, never add a second Poisson fluctuation.  Do not clip negative
-  Gaussian pseudo-counts or silently regularize the covariance.
-- Record the Toy count per hypothesis and scan point, base seed, derived point
-  seed rule, tail convention, finite-ensemble p-value correction, nuisance
-  generator prescription, profile method and worker count.  Store Monte Carlo
-  uncertainty next to every CLs value; optimizer/thread parallelism may improve
-  speed only when it leaves seeded numerical results invariant within tolerance.
-- Adaptive Toy calibration may use the analytic surface only to select a broad
-  contour band.  Result tables must separately mark candidate and actually
-  evaluated points and retain both analytic and Toy CLs.  A hybrid diagnostic
-  surface must never be described as an all-Toy result.  A diagnostic point cap
-  must sample across the full candidate-index range, not only its first rows.
-- Record the statistical covariance prescription in every result. For the target 2025 paper, use the documented Pearson prescription; the HEPData table header's conflicting CNP wording is only an explicit cross-check mode, never a silent default.
-- The stored total covariance is a reference audit artifact. Active scans must use `PredictionScaledGaussianLikelihood`: rescale the released systematic covariance with the current/reference prediction ratio and add current Pearson statistics. Never silently revert to the fixed reference matrix.
-- Profile the full unitary `sin2_theta14` domain. At fixed appearance amplitude, the large-`sin2_theta14` branch is not generally redundant because `|U_mu4|^2=(1-sin2_theta14)sin2_theta24` changes. Prefits must explicitly test zero-appearance boundary surfaces.
-- The released aggregate Background is frozen only because its oscillatable and non-oscillatable components are unavailable. Preserve this limitation in metadata and never call the resulting curve a collaboration-exact exclusion.
-- Use Cholesky solves, not explicit matrix inversion. Active likelihood code must never silently regularize a covariance; a non-positive-definite covariance is an input error to diagnose.
-
-## Frozen material
-
-- `frozen/baseline_v1/` and `frozen/current_system_backup/` are evidence only. Do not import, execute or modify them. The user-selected BNB flux vectors have been syntax-parsed once into `data/experiments/microboone/bnb/inputs/bnb_flux.csv`; active predictions read only that visible CSV and its provenance JSON.
-- If legacy behavior is examined, do it in a separate diagnostic script and label it as historical; never add a compatibility adapter to `src/`.
-
-## Required checks after an edit
-
-1. Run `python -m pytest -q`.
-2. Run `python scripts/check.py` from the repository root.
-3. If templates or covariance readers change, add a negative test that proves invalid shapes, names, or reference mismatches are rejected.
-4. Separate confirmed facts, implementation assumptions, and unresolved uncertainties in the final report.
+本文更新条件：只有长期协作约束真正改变时更新。当前文件名和运行设置变化不需要改写这些原则。

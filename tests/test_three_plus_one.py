@@ -1,8 +1,8 @@
 import numpy as np
 import pytest
 
-from sterile_fit.models.three_plus_one import ThreePlusOneVacuumModel
-from sterile_fit.parameters import ThreePlusOneParameters
+from sterile_fit.core.three_plus_one import ThreePlusOneVacuumModel
+from sterile_fit.core.three_plus_one import ThreePlusOneParameters
 
 
 def test_probability_is_conserved_for_each_initial_flavour() -> None:

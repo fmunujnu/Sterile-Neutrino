@@ -22,6 +22,11 @@ from pdf_extract import (  # noqa: E402
     select_target_curve,
 )
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+from sterile_fit.output import result_directory
+
 
 PANELS = [
     (5, "rhc_numu", 0.10, 0.52),
@@ -86,7 +91,7 @@ def _draw_page_overlay(source: Path, destination: Path, page_width: float, page_
 
 def main() -> int:
     pdf = STUDY_ROOT / "data" / "microboone_note_1129" / "MICROBOONE-NOTE-1129-PUB.pdf"
-    output = REPOSITORY_ROOT / "outputs" / "checks" / "numi_flux_pdf_extraction" / "microboone_pages_5_6"
+    output = result_directory("studies", "numi_flux_pdf_extraction", "results") / "microboone_pages_5_6"
     output.mkdir(parents=True, exist_ok=True)
     page_paths: dict[int, list[list[tuple[float, float]]]] = {5: [], 6: []}
     page_sizes: dict[int, tuple[float, float]] = {}

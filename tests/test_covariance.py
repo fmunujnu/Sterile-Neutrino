@@ -3,12 +3,7 @@ import json
 import numpy as np
 import pytest
 
-from sterile_fit.covariance import (
-    combined_neyman_pearson_variance,
-    load_declared_total_covariance,
-    pearson_statistical_variance,
-    solve_quadratic_form,
-)
+from sterile_fit.core.likelihood import combined_neyman_pearson_variance, load_declared_total_covariance, pearson_statistical_variance, solve_quadratic_form
 
 
 def test_declared_total_covariance_requires_fixed_reference_contract(tmp_path) -> None:

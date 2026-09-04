@@ -1,0 +1,181 @@
+[
+  {
+    "old": "src/sterile_fit/parameters.py",
+    "new": "src/sterile_fit/core/three_plus_one.py"
+  },
+  {
+    "old": "src/sterile_fit/models/base.py",
+    "new": "src/sterile_fit/core/three_plus_one.py"
+  },
+  {
+    "old": "src/sterile_fit/models/three_plus_one.py",
+    "new": "src/sterile_fit/core/three_plus_one.py"
+  },
+  {
+    "old": "src/sterile_fit/one_plus_three_plus_one/parameters.py",
+    "new": "src/sterile_fit/core/one_plus_three_plus_one.py"
+  },
+  {
+    "old": "src/sterile_fit/one_plus_three_plus_one/model.py",
+    "new": "src/sterile_fit/core/one_plus_three_plus_one.py"
+  },
+  {
+    "old": "src/sterile_fit/fitting.py",
+    "new": "src/sterile_fit/core/profile_three_plus_one.py"
+  },
+  {
+    "old": "src/sterile_fit/one_plus_three_plus_one/fitting.py",
+    "new": "src/sterile_fit/core/profile_one_plus_three_plus_one.py"
+  },
+  {
+    "old": "src/sterile_fit/covariance.py",
+    "new": "src/sterile_fit/core/likelihood.py"
+  },
+  {
+    "old": "src/sterile_fit/likelihood.py",
+    "new": "src/sterile_fit/core/likelihood.py"
+  },
+  {
+    "old": "src/sterile_fit/statistics/asymptotic_cls.py",
+    "new": "src/sterile_fit/core/calibration.py"
+  },
+  {
+    "old": "src/sterile_fit/statistics/toy_cls.py",
+    "new": "src/sterile_fit/core/calibration.py"
+  },
+  {
+    "old": "src/sterile_fit/experiments/microboone/bnb/binning.py",
+    "new": "src/sterile_fit/experiments/microboone/public_data.py"
+  },
+  {
+    "old": "src/sterile_fit/experiments/microboone/numi/binning.py",
+    "new": "src/sterile_fit/experiments/microboone/public_data.py"
+  },
+  {
+    "old": "src/sterile_fit/experiments/microboone/bnb/published_inputs.py",
+    "new": "src/sterile_fit/experiments/microboone/public_data.py"
+  },
+  {
+    "old": "src/sterile_fit/experiments/microboone/numi/published_inputs.py",
+    "new": "src/sterile_fit/experiments/microboone/public_data.py"
+  },
+  {
+    "old": "src/sterile_fit/experiments/microboone/bnb/archival_response.py",
+    "new": "src/sterile_fit/experiments/microboone/response.py"
+  },
+  {
+    "old": "src/sterile_fit/experiments/microboone/bnb/adapters/archival_reco_60_to_bnb26.py",
+    "new": "src/sterile_fit/experiments/microboone/response.py"
+  },
+  {
+    "old": "src/sterile_fit/experiments/microboone/bnb/templates.py",
+    "new": "src/sterile_fit/experiments/microboone/bnb.py"
+  },
+  {
+    "old": "src/sterile_fit/experiments/microboone/bnb/prediction.py",
+    "new": "src/sterile_fit/experiments/microboone/bnb.py"
+  },
+  {
+    "old": "src/sterile_fit/experiments/microboone/bnb/workflow.py",
+    "new": "src/sterile_fit/experiments/microboone/bnb.py"
+  },
+  {
+    "old": "src/sterile_fit/experiments/microboone/numi/event_prediction.py",
+    "new": "src/sterile_fit/experiments/microboone/numi.py"
+  },
+  {
+    "old": "src/sterile_fit/experiments/microboone/numi/prediction.py",
+    "new": "src/sterile_fit/experiments/microboone/numi.py"
+  },
+  {
+    "old": "src/sterile_fit/experiments/microboone/numi/workflow.py",
+    "new": "src/sterile_fit/experiments/microboone/numi.py"
+  },
+  {
+    "old": "src/sterile_fit/experiments/microboone/joint_bnb_numi.py",
+    "new": "src/sterile_fit/experiments/microboone/joint.py"
+  },
+  {
+    "old": "src/sterile_fit/analysis/selection.py",
+    "new": "src/sterile_fit/adapter.py"
+  },
+  {
+    "old": "src/sterile_fit/analysis/combination.py",
+    "new": "src/sterile_fit/adapter.py"
+  },
+  {
+    "old": "src/sterile_fit/analysis/registry.py",
+    "new": "src/sterile_fit/adapter.py"
+  },
+  {
+    "old": "src/sterile_fit/one_plus_three_plus_one/analysis.py",
+    "new": "src/sterile_fit/adapter.py"
+  },
+  {
+    "old": "src/sterile_fit/spectrum_plotting.py",
+    "new": "src/sterile_fit/output.py"
+  },
+  {
+    "old": "scripts/scan.py",
+    "new": "src/sterile_fit/scan.py"
+  },
+  {
+    "old": "scripts/one_plus_three_plus_one/scan.py",
+    "new": "src/sterile_fit/scan.py"
+  },
+  {
+    "old": "scripts/check.py",
+    "new": "src/sterile_fit/experiments/microboone/bnb.py"
+  },
+  {
+    "old": "scripts/experiments/microboone/bnb/build_anchor.py",
+    "new": "src/sterile_fit/experiments/microboone/bnb.py"
+  },
+  {
+    "old": "scripts/experiments/microboone/bnb/prepare_bnb_total_covariance.py",
+    "new": "src/sterile_fit/experiments/microboone/bnb.py"
+  },
+  {
+    "old": "scripts/experiments/microboone/bnb/normalize_archival_reco_matrices.py",
+    "new": "src/sterile_fit/experiments/microboone/response.py"
+  },
+  {
+    "old": "scripts/experiments/microboone/bnb/adapt_archival_reco_to_bnb26.py",
+    "new": "src/sterile_fit/experiments/microboone/response.py"
+  },
+  {
+    "old": "scripts/experiments/microboone/numi/build_paper_weighted_flux.py",
+    "new": "src/sterile_fit/experiments/microboone/numi.py"
+  },
+  {
+    "old": "scripts/experiments/microboone/numi/build_four_channel_events.py",
+    "new": "src/sterile_fit/experiments/microboone/numi.py"
+  },
+  {
+    "old": "scripts/experiments/microboone/bnb/plot_published_bnb.py",
+    "new": "src/sterile_fit/experiments/microboone/bnb.py",
+    "shared_renderer": "src/sterile_fit/output.py"
+  },
+  {
+    "old": "scripts/experiments/microboone/plot_bnb_numi_joint.py",
+    "new": "src/sterile_fit/experiments/microboone/joint.py",
+    "shared_renderer": "src/sterile_fit/output.py"
+  },
+  {
+    "old": "scripts/experiments/microboone/plot_figure1_nue_cc_fc.py",
+    "new": "src/sterile_fit/experiments/microboone/joint.py",
+    "shared_renderer": "src/sterile_fit/output.py"
+  },
+  {
+    "old": "scripts/experiments/microboone/plot_public_inputs.py",
+    "new": "src/sterile_fit/output.py"
+  },
+  {
+    "old": "scripts/experiments/microboone/numi/plot_flux_inputs.py",
+    "new": "src/sterile_fit/output.py"
+  },
+  {
+    "old": "studies/scan_result_comparison/plot_completed_scan_contours.py",
+    "new": "src/sterile_fit/output.py"
+  }
+]

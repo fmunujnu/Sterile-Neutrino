@@ -1,0 +1,8 @@
+analysis_name: "microboone_bnb_numi_joint_diagnostic"
+experiments:
+  - experiment_id: "microboone.bnb_numi.joint_four_channel"
+    include: true
+    status: "approximate"
+    correlation_group: "microboone_2025_release"
+    configuration: "configs/experiments/microboone/joint_bnb_numi/analysis.yaml"
+    note: "One 208-bin workflow containing BNB, NuMI and their released cross-covariance blocks."

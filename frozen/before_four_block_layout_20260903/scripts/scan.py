@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
 import json
 from pathlib import Path
+from time import perf_counter
 
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
@@ -34,6 +36,65 @@ from sterile_fit.covariance import solve_quadratic_form
 
 
 ROOT = Path(__file__).resolve().parents[1]
+_PROCESS_ANALYSIS = None
+_PROCESS_MODE = None
+
+
+def _initialise_scan_process(analysis_config: str, bnb_overrides: dict[str, str], mode: str) -> None:
+    """Construct one read-only analysis instance inside each worker process."""
+    global _PROCESS_ANALYSIS, _PROCESS_MODE
+    selection = load_analysis_selection(Path(analysis_config), repository_root=ROOT)
+    _PROCESS_ANALYSIS = build_three_plus_one_analysis(
+        selection,
+        repository_root=ROOT,
+        bnb_overrides={key: Path(value) for key, value in bnb_overrides.items()},
+    )
+    _PROCESS_MODE = mode
+
+
+def _evaluate_toy_point_in_process(payload):
+    """Evaluate one seeded scan point using process-local immutable inputs."""
+    if _PROCESS_ANALYSIS is None or _PROCESS_MODE is None:
+        raise RuntimeError("scan worker process was not initialised")
+    point_index, tested_parameters, observed_test_statistic, toy_count, seed, batch_size = payload
+    null_parameters = ThreePlusOneParameters(1.0, 0.0, 0.0)
+    pairs = _hypothesis_pairs(_PROCESS_ANALYSIS, null_parameters, tested_parameters)
+    null_hypotheses = tuple(pair[0] for pair in pairs)
+    tested_hypotheses = tuple(pair[1] for pair in pairs)
+    null_chi2 = prepare_fixed_hypothesis_chi2(null_hypotheses)
+
+    def profiled_test_statistic(toy_dataset):
+        profiled_4nu = _profile_toy_at_scan_point(
+            _PROCESS_ANALYSIS,
+            toy_dataset,
+            mode=_PROCESS_MODE,
+            tested_parameters=tested_parameters,
+        )
+        return profiled_4nu.chi2 - null_chi2(toy_dataset)
+
+    comparison = toy_cls(
+        float(observed_test_statistic),
+        null_hypotheses,
+        tested_hypotheses,
+        profiled_test_statistic,
+        number_of_toys=toy_count,
+        seed=seed,
+        workers=1,
+        batch_size=batch_size,
+    )
+    return int(point_index), comparison
+
+
+def _format_duration(seconds: float) -> str:
+    """Format a non-negative runtime without hiding sub-minute progress."""
+    value = max(0.0, float(seconds))
+    if value < 60.0:
+        return f"{value:.1f}s"
+    minutes, remaining_seconds = divmod(value, 60.0)
+    if minutes < 60.0:
+        return f"{int(minutes)}m {remaining_seconds:04.1f}s"
+    hours, remaining_minutes = divmod(int(minutes), 60)
+    return f"{hours}h {remaining_minutes:02d}m"
 
 
 def _csv_values(value: str) -> list[float]:
@@ -178,6 +239,7 @@ def _adaptive_toy_candidate_mask(
 
 
 def main() -> None:
+    run_started_at = perf_counter()
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--mode",
@@ -223,6 +285,18 @@ def main() -> None:
         help="parallel Toy profiles in shared-memory threads; 1 is the deterministic conservative default",
     )
     parser.add_argument(
+        "--scan-workers",
+        type=int,
+        default=1,
+        help="parallel independent scan points; use this level for multi-core adaptive scans",
+    )
+    parser.add_argument(
+        "--scan-parallel-backend",
+        choices=("threads", "processes"),
+        default="threads",
+        help="processes bypass Python's interpreter lock for expensive pointwise profiles",
+    )
+    parser.add_argument(
         "--toy-batch-size",
         type=int,
         default=256,
@@ -262,6 +336,13 @@ def main() -> None:
         raise ValueError("--number-of-toys must be at least 2 per hypothesis")
     if toy_enabled and arguments.toy_workers < 1:
         raise ValueError("--toy-workers must be at least 1")
+    if toy_enabled and arguments.scan_workers < 1:
+        raise ValueError("--scan-workers must be at least 1")
+    if toy_enabled and arguments.scan_workers > 1 and arguments.toy_workers > 1:
+        raise ValueError(
+            "nested scan-point and within-point parallelism is disabled; "
+            "use --scan-workers N with --toy-workers 1"
+        )
     if toy_enabled and arguments.toy_batch_size < 1:
         raise ValueError("--toy-batch-size must be at least 1")
     if arguments.mode == "prefit" and toy_enabled:
@@ -470,7 +551,8 @@ def main() -> None:
             raw_distribution_directory = output_directory / "toy_distributions"
             if arguments.store_toy_distributions and candidate_indices.size:
                 raw_distribution_directory.mkdir(parents=True, exist_ok=False)
-            for completed_count, point_index in enumerate(candidate_indices, start=1):
+
+            def evaluate_toy_point(point_index: int):
                 tested_parameters = row_parameters[int(point_index)]
                 observed_test_statistic = result_table.loc[
                     point_index, "test_statistic_chi2_4nu_minus_chi2_3nu"
@@ -489,7 +571,7 @@ def main() -> None:
                     )
                     return profiled_4nu.chi2 - null_chi2(toy_dataset)
 
-                comparison = toy_cls(
+                return int(point_index), toy_cls(
                     float(observed_test_statistic),
                     null_hypotheses,
                     tested_hypotheses,
@@ -499,6 +581,12 @@ def main() -> None:
                     workers=arguments.toy_workers,
                     batch_size=arguments.toy_batch_size,
                 )
+
+            toy_stage_started_at = perf_counter()
+            pre_toy_elapsed = toy_stage_started_at - run_started_at
+            total_selected_points = int(candidate_indices.size)
+
+            def record_toy_result(completed_count: int, point_index: int, comparison) -> None:
                 if arguments.store_toy_distributions:
                     pd.DataFrame({
                         "test_statistic_under_3nu": comparison.test_statistics_under_3nu,
@@ -508,10 +596,21 @@ def main() -> None:
                         index=False,
                         float_format="%.17g",
                     )
+                toy_elapsed = perf_counter() - toy_stage_started_at
+                estimated_toy_total = (
+                    toy_elapsed * total_selected_points / completed_count
+                )
+                estimated_overall_total = pre_toy_elapsed + estimated_toy_total
+                overall_elapsed = pre_toy_elapsed + toy_elapsed
+                remaining = max(0.0, estimated_toy_total - toy_elapsed)
                 print(
-                    f"Toy CLs selected point {completed_count}/{candidate_indices.size} "
-                    f"(global index {point_index}): "
-                    f"CLs={comparison.cls:.6g}"
+                    f"Toy CLs progress {completed_count}/{total_selected_points} "
+                    f"({100.0 * completed_count / total_selected_points:.1f}%; "
+                    f"global index {point_index}; CLs={comparison.cls:.6g}); "
+                    f"elapsed={_format_duration(overall_elapsed)}; "
+                    f"estimated total={_format_duration(estimated_overall_total)}; "
+                    f"remaining={_format_duration(remaining)}",
+                    flush=True,
                 )
                 summary = {
                     "toy_count_per_hypothesis": comparison.number_of_toys_per_hypothesis,
@@ -540,6 +639,60 @@ def main() -> None:
                             f"test_statistic_quantile_{suffix}_under_{hypothesis_name}"
                         ] = float(np.quantile(values, quantile))
                 toy_summary_rows[int(point_index)] = summary
+
+            if arguments.scan_workers == 1:
+                for completed_count, point_index in enumerate(candidate_indices, start=1):
+                    evaluated_index, comparison = evaluate_toy_point(int(point_index))
+                    record_toy_result(completed_count, evaluated_index, comparison)
+            elif arguments.scan_parallel_backend == "threads":
+                print(
+                    f"Starting {total_selected_points} Toy-calibrated scan points with "
+                    f"{arguments.scan_workers} point workers; pre-Toy stage took "
+                    f"{_format_duration(pre_toy_elapsed)}",
+                    flush=True,
+                )
+                with ThreadPoolExecutor(max_workers=arguments.scan_workers) as executor:
+                    futures = [
+                        executor.submit(evaluate_toy_point, int(point_index))
+                        for point_index in candidate_indices
+                    ]
+                    for completed_count, future in enumerate(
+                        as_completed(futures), start=1
+                    ):
+                        evaluated_index, comparison = future.result()
+                        record_toy_result(completed_count, evaluated_index, comparison)
+            else:
+                print(
+                    f"Starting {total_selected_points} Toy-calibrated scan points with "
+                    f"{arguments.scan_workers} worker processes; pre-Toy stage took "
+                    f"{_format_duration(pre_toy_elapsed)}",
+                    flush=True,
+                )
+                process_overrides = {
+                    key: str(value) for key, value in bnb_overrides.items()
+                }
+                payloads = [
+                    (
+                        int(point_index),
+                        row_parameters[int(point_index)],
+                        float(result_table.loc[
+                            point_index, "test_statistic_chi2_4nu_minus_chi2_3nu"
+                        ]),
+                        arguments.number_of_toys,
+                        _stable_point_seed(arguments.toy_seed, int(point_index)),
+                        arguments.toy_batch_size,
+                    )
+                    for point_index in candidate_indices
+                ]
+                with ProcessPoolExecutor(
+                    max_workers=arguments.scan_workers,
+                    initializer=_initialise_scan_process,
+                    initargs=(str(arguments.analysis_config), process_overrides, arguments.mode),
+                ) as executor:
+                    futures = [executor.submit(_evaluate_toy_point_in_process, item) for item in payloads]
+                    for completed_count, future in enumerate(as_completed(futures), start=1):
+                        evaluated_index, comparison = future.result()
+                        record_toy_result(completed_count, evaluated_index, comparison)
             if toy_summary_rows:
                 toy_summary_table = pd.DataFrame.from_dict(toy_summary_rows, orient="index")
                 for column in toy_summary_table:
@@ -713,6 +866,8 @@ def main() -> None:
             ),
             "toy_seed": arguments.toy_seed if toy_enabled else None,
             "toy_workers": arguments.toy_workers if toy_enabled else None,
+            "scan_workers": arguments.scan_workers if toy_enabled else None,
+            "scan_parallel_backend": arguments.scan_parallel_backend if toy_enabled else None,
             "toy_batch_size": arguments.toy_batch_size if toy_enabled else None,
             "finite_toy_p_value_correction": (
                 "(right_tail_count + 1) / (number_of_toys + 1)"

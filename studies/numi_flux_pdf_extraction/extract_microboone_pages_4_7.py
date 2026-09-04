@@ -15,6 +15,8 @@ from PIL import Image, ImageDraw
 
 STUDY_ROOT = Path(__file__).resolve().parent
 REPOSITORY_ROOT = STUDY_ROOT.parents[1]
+sys.path.insert(0, str(REPOSITORY_ROOT / "src"))
+from sterile_fit.output import result_directory
 sys.path.insert(0, str(STUDY_ROOT / "src"))
 
 from geometry import transform_to_dict  # noqa: E402
@@ -273,13 +275,7 @@ def main() -> int:
         / "microboone_note_1129"
         / "MICROBOONE-NOTE-1129-PUB.pdf"
     )
-    output = (
-        REPOSITORY_ROOT
-        / "outputs"
-        / "checks"
-        / "numi_flux_pdf_extraction"
-        / "microboone_pages_4_7"
-    )
+    output = result_directory("studies", "numi_flux_pdf_extraction", "results") / "microboone_pages_4_7"
     final_directory = output / "flux_arrays"
     source_directory = output / "source_coordinate_audit"
     final_directory.mkdir(parents=True, exist_ok=True)

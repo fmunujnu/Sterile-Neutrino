@@ -1,9 +1,6 @@
 import numpy as np
 
-from sterile_fit.experiments.microboone.bnb.adapters.archival_reco_60_to_bnb26 import (
-    bnb26_reco_aggregation,
-    rebin_archival_response_to_bnb26,
-)
+from sterile_fit.experiments.microboone.response import bnb26_reco_aggregation, rebin_archival_response_to_bnb26
 
 
 def test_bnb26_adapter_maps_regular_bins_and_overflow() -> None:
