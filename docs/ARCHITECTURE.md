@@ -172,3 +172,16 @@ BNB历史数组提取工具移到 studies/bnb_flux_provenance，日常只读已�
 PDF提取研究保留原件、算法及来源，不成为扫描导入依赖。
 
 旧结果不删除。读取旧CSV时按metadata区分统计方法、是否全Toy、坐标和模型，不按目录名推断。
+
+## 跨系统运行
+
+活动代码中的仓库路径统一由 `src/sterile_fit/paths.py` 根据模块位置解析，入口
+`run.py` 根据自身位置加入 `src`；Windows盘符、登录后的当前目录和服务器用户名
+都不参与科学输入定位。数据metadata中保留的历史绝对路径只是来源记录，不作为
+活动读取路径。
+
+`scripts/server/run_relics2.sh` 是 Linux 固定入口：它从脚本位置寻找仓库，默认使用
+`~/data/venvs/sterile-py311`，设置非交互绘图后端，并把每个进程的BLAS线程默认限制
+为1。`scripts/server/sync_relics2.ps1` 是 Windows 同步入口，只接受干净的已提交工作树，
+依次更新 GitHub、服务器私有 bare 仓库和服务器 sparse-checkout 工作副本。服务器仅
+检出活动 `src`、`configs`、`data` 与根入口；归档、研究工具、测试和输出不进入工作目录。

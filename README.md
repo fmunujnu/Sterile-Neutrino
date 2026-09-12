@@ -17,6 +17,21 @@ Python >= 3.11。依赖声明在 pyproject.toml。从仓库根目录运行。
 已有环境无需重新安装依赖；新环境可使用 python -m pip install -e ".[dev]"。
 模型、统计和优化设置不会因为选择新的入口而自动改变。
 
+在 `relics2` 上使用固定入口，无需填写仓库或数据的绝对路径：
+
+```bash
+cd ~/data/jobs/sterile-neutrino
+bash scripts/server/run_relics2.sh check
+bash scripts/server/run_relics2.sh scan --preset fig3a --calibration toy --number-of-toys 100
+```
+
+服务器工作副本使用 Git sparse-checkout，只展开 `src/`、`configs/`、`data/`
+以及根目录入口。Windows 端提交后运行 `scripts/server/sync_relics2.ps1` 即可同时
+推送 GitHub、服务器私有 Git 仓库并更新工作副本。脚本拒绝同步未提交改动。
+服务器 Python 环境默认位于 `~/data/venvs/sterile-py311`；如管理员调整位置，
+只需设置一次 `STERILE_VENV`，不修改代码。正式计算的软件版本记录在
+`requirements-server.lock`。
+
 ## 检查与谱图
 
 ```powershell
