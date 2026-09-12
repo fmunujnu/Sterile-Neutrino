@@ -1,0 +1,23 @@
+{
+  "public_dk2nu_directory": "https://portal.nersc.gov/project/dune/data/misc/NuMI_dk2nu/newtarget-200kA_20220409/",
+  "file_template": "g4numiv6_minervame_me000z-200i_{index}_0001.dk2nu",
+  "beam_metadata_expected": {
+    "beamsim": "g4numi_v6_MODGEANT4",
+    "physics": "geant4_9_2_p03_FTFP_BERT1.0",
+    "target": "me000z_",
+    "horn": "-200i",
+    "decay_volume": "helium"
+  },
+  "microboone_flux_directory": "data/experiments/microboone/numi/inputs/flux_components",
+  "exposure_fractions": {
+    "fhc": 0.308,
+    "rhc": 0.692
+  },
+  "fhc_conditional_proxy": {
+    "numu": "numubar",
+    "numubar": "numu",
+    "nue": "nuebar",
+    "nuebar": "nue"
+  }
+}
+

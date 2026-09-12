@@ -11,7 +11,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(ROOT / "src"), str(ROOT)]
 
-from sterile_fit.adapter import _hypothesis_pairs, build_three_plus_one_analysis, load_analysis_selection
+from sterile_fit.experiments.microboone.adapter import _hypothesis_pairs, build_three_plus_one_analysis, load_analysis_selection
 from sterile_fit.core.calibration import _quadratic_difference_law
 from sterile_fit.core.three_plus_one import ThreePlusOneParameters
 from sterile_fit.output import plot_statistic_calibration

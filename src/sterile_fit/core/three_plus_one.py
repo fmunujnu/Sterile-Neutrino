@@ -147,3 +147,25 @@ class ThreePlusOneVacuumModel:
             coefficients = self.mixing_matrix[final_flavour, :] * np.conj(self.mixing_matrix[initial_flavour, :])
         return np.abs(phase @ coefficients) ** 2
 
+
+def short_baseline_appearance_probability(
+    parameters: ThreePlusOneParameters,
+    energy_GeV: NDArray[np.float64],
+    baseline_km: NDArray[np.float64] | float,
+) -> NDArray[np.float64]:
+    """Exact 3+1 SBL P(mu->e), allowing an event-by-event baseline.
+
+    With states 1--3 degenerate there is one oscillation frequency and no CP
+    asymmetry, so the same expression applies to neutrinos and antineutrinos.
+    """
+    energies = np.asarray(energy_GeV, dtype=float)
+    baselines = np.asarray(baseline_km, dtype=float)
+    if energies.ndim != 1 or energies.size == 0 or np.any(energies <= 0.0):
+        raise ValueError("energy_GeV must be a non-empty positive vector")
+    if baselines.ndim not in (0, 1) or np.any(baselines <= 0.0):
+        raise ValueError("baseline_km must be a positive scalar or vector")
+    if baselines.ndim == 1 and baselines.shape != energies.shape:
+        raise ValueError("an event-by-event baseline must match energy_GeV")
+    phase = 1.267 * parameters.delta_m2_41_eV2 * baselines / energies
+    return parameters.sin2_2theta_mue_exact * np.sin(phase) ** 2
+

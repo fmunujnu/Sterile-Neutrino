@@ -41,7 +41,14 @@ def main(argv=None):
     inputs = tasks.add_parser("inputs", help="Visual input checks")
     inputs.add_argument("--kind", choices=("public", "numi-flux"), default="public")
     tasks.add_parser("compare", help="Render completed scan CSVs without fitting or recalibrating")
-    for command in (scan, spectrum, prepare, inputs, tasks.choices["compare"]):
+    miniboone = tasks.add_parser("miniboone", help="MiniBooNE 2020 combined official release or local likelihood reconstruction")
+    miniboone.add_argument("--kind", choices=("official", "scan"), default="official")
+    lsnd = tasks.add_parser("lsnd", help="LSND final-publication facts or 3+1 appearance-convention audit")
+    lsnd.add_argument(
+        "--kind", choices=("official", "core-mapping", "rate-scan"),
+        default="official",
+    )
+    for command in (scan, spectrum, prepare, inputs, tasks.choices["compare"], miniboone, lsnd):
         command.add_argument("--batch", help="Output batch label; default: unique UTC timestamp")
     args, remaining = parser.parse_known_args(argv)
     from sterile_fit.output import begin_output_batch
@@ -81,7 +88,7 @@ def main(argv=None):
                         "numi-flux": prepare_numi_flux, "numi-kernel": prepare_numi_kernel}[args.kind], remaining)
     if args.task == "check":
         if remaining: parser.error("Unknown check options: " + " ".join(remaining))
-        from sterile_fit.adapter import check_selected_inputs
+        from sterile_fit.experiments.microboone.adapter import check_selected_inputs
         return check_selected_inputs(args.analysis)
     if args.task == "inputs":
         from sterile_fit.output import plot_public_inputs, plot_numi_flux_inputs
@@ -90,6 +97,12 @@ def main(argv=None):
     if args.task == "compare":
         from sterile_fit.output import plot_completed_scan_contours
         return _invoke(plot_completed_scan_contours, remaining)
+    if args.task == "miniboone":
+        from sterile_fit.experiments.miniboone.adapter import run_miniboone
+        return _invoke(run_miniboone, ["--kind", args.kind, *remaining])
+    if args.task == "lsnd":
+        from sterile_fit.experiments.lsnd.adapter import run_lsnd
+        return _invoke(run_lsnd, ["--kind", args.kind, *remaining])
 
 
 if __name__ == "__main__":

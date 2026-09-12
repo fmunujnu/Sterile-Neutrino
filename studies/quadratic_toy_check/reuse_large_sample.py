@@ -13,7 +13,7 @@ ROOT=Path(__file__).resolve().parents[2]
 sys.path[:0]=[str(ROOT/"src"),str(ROOT)]
 from studies.quadratic_toy_check.quadratic import from_hypotheses
 from studies.three_plus_one_toy_distribution_fit.run import _build_analysis
-from sterile_fit.adapter import _hypothesis_pairs
+from sterile_fit.experiments.microboone.adapter import _hypothesis_pairs
 from sterile_fit.core.three_plus_one import ThreePlusOneParameters
 from sterile_fit.output import begin_output_batch, result_directory, write_csv, write_json, finish_output_batch
 

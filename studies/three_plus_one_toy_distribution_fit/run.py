@@ -24,10 +24,10 @@ if str(SRC) not in sys.path:
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from sterile_fit.adapter import _hypothesis_pairs, _objective_for_toy
+from sterile_fit.experiments.microboone.adapter import _hypothesis_pairs, _objective_for_toy
 from sterile_fit.scan import _stable_point_seed
-from sterile_fit.adapter import build_three_plus_one_analysis
-from sterile_fit.adapter import load_analysis_selection
+from sterile_fit.experiments.microboone.adapter import build_three_plus_one_analysis
+from sterile_fit.experiments.microboone.adapter import load_analysis_selection
 from sterile_fit.core.profile_three_plus_one import profile_s14_s24_at_fixed_sin2_2theta_mue
 from sterile_fit.core.three_plus_one import ThreePlusOneParameters
 from sterile_fit.core.calibration import prepare_fixed_hypothesis_chi2

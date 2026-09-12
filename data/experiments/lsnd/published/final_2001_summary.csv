@@ -1,0 +1,10 @@
+quantity,value,statistical_uncertainty,systematic_uncertainty,unit,selection_or_context,paper_location
+dar_antinu_mu_to_antinu_e_excess,87.9,22.4,6.0,events,20<Ee<60 MeV; Rgamma fit,Table XI p.35
+dar_oscillation_probability_percent,0.264,0.067,0.045,percent,20<Ee<60 MeV; nominal,Table XI p.35
+four_dimensional_best_fit_amplitude,0.003,,,sin2_2theta,20<Ee<200 MeV combined DAR+DIF,Sec. IX.H p.27
+four_dimensional_best_fit_delta_m2,1.2,,,eV2,20<Ee<200 MeV combined DAR+DIF,Sec. IX.H p.27
+four_dimensional_best_fit_dar_signal,89.5,,,events,20<Ee<200 MeV combined DAR+DIF,Sec. IX.H p.27
+r_gamma_gt_10_excess,32.2,9.4,2.3,events,20<Ee<60 MeV; Rgamma>10,Table X p.35
+dar_source_to_detector_center_distance,30.0,,,m,A6 source to detector center,Sec. II.E p.6
+detector_fiducial_mass,167.0,,,metric_ton,liquid scintillator,Sec. II.E p.6
+integrated_proton_charge,28896.0,,,C,1993-1998,Sec. I p.3

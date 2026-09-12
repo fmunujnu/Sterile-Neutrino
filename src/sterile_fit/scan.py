@@ -5,19 +5,21 @@ from sterile_fit.output import write_csv, write_json, plot_three_plus_one_scan, 
 import argparse
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
+from hashlib import sha256
+from itertools import product
 import json
 from pathlib import Path
 from time import perf_counter
 import numpy as np
 import pandas as pd
-from sterile_fit.adapter import _hypothesis_pairs, extended_hypothesis_pairs, build_three_plus_one_analysis
-from sterile_fit.adapter import load_analysis_selection
+from sterile_fit.experiments.microboone.adapter import _hypothesis_pairs, _objective_for_toy, extended_hypothesis_pairs, extended_objective_for_toy, build_three_plus_one_analysis
+from sterile_fit.experiments.microboone.adapter import load_analysis_selection
 from sterile_fit.core.profile_three_plus_one import profile_appearance_amplitude_grid, profile_electron_disappearance_grid, profile_grid, profile_s14_s24_at_fixed_sin2_2theta_ee, profile_s14_s24_at_fixed_sin2_2theta_mue, profile_three_plus_one
 from sterile_fit.core.three_plus_one import ThreePlusOneParameters
-from sterile_fit.core.calibration import GaussianHypothesis, quadratic_cls, prepare_fixed_test_statistic, toy_cls
+from sterile_fit.core.calibration import GaussianHypothesis, asymptotic_cls, prepare_fixed_test_statistic, toy_cls
 from sterile_fit.core.likelihood import solve_quadratic_form
 from sterile_fit.core.one_plus_three_plus_one import OnePlusThreePlusOneParameters
-from sterile_fit.adapter import build_one_plus_three_plus_one_analysis
+from sterile_fit.experiments.microboone.adapter import build_one_plus_three_plus_one_analysis
 from sterile_fit.core.profile_one_plus_three_plus_one import profile_at_fixed_mass_pair
 from sterile_fit.output import plot_one_plus_three_plus_one_scan as extended_plot_result
 # Profile-only engines. Global prefit and its delta-chi2 diagnostics are archived.
@@ -26,6 +28,110 @@ from sterile_fit.output import plot_one_plus_three_plus_one_scan as extended_plo
 from sterile_fit.paths import REPOSITORY_ROOT as ROOT
 _PROCESS_ANALYSIS = None
 _PROCESS_MODE = None
+_SCAN_CACHE_SCHEMA = 2
+
+
+def _hash_file(digest, path: Path) -> None:
+    """Add a file path and content to a deterministic cache fingerprint."""
+    resolved = path.resolve()
+    try:
+        label = resolved.relative_to(ROOT.resolve()).as_posix()
+    except ValueError:
+        label = resolved.as_posix()
+    digest.update(label.encode("utf-8"))
+    digest.update(b"\0")
+    with path.open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+
+
+def _precalibration_cache_identity(arguments, delta_grid, appearance_grid, electron_grid):
+    """Fingerprint every input that can affect profile or Gaussian calibration.
+
+    Toy-only controls are deliberately absent: changing the Toy count, seed,
+    batch size or adaptive selection band must not invalidate an otherwise
+    identical deterministic pre-calibration.
+    """
+    settings = {
+        "schema": _SCAN_CACHE_SCHEMA,
+        "mode": arguments.mode,
+        "analysis_config": str(arguments.analysis_config.resolve()),
+        "kernel_override": str(arguments.kernel.resolve()) if arguments.kernel else None,
+        "covariance_override": str(arguments.covariance.resolve()) if arguments.covariance else None,
+        "delta_m2_grid_eV2": [float(value) for value in delta_grid],
+        "appearance_grid": [float(value) for value in appearance_grid],
+        "electron_disappearance_grid": [float(value) for value in electron_grid],
+        "sin2_theta14_grid": [float(value) for value in arguments.sin2_theta14_grid],
+    }
+    digest = sha256(json.dumps(settings, sort_keys=True, separators=(",", ":")).encode("utf-8"))
+    files = [ROOT / "run.py", *sorted((ROOT / "src").rglob("*.py")), *sorted((ROOT / "configs").rglob("*.yaml"))]
+    # The official 2.29 GB collaboration grid is a study input, never consumed
+    # by this scan. All active local scientific inputs are small enough to hash.
+    excluded = ROOT / "data" / "experiments" / "microboone" / "shared" / "microboone_material_gridscan_numi_dm2_t14_t24_dchi2.txt"
+    files.extend(path for path in sorted((ROOT / "data").rglob("*")) if path.is_file() and path.resolve() != excluded.resolve())
+    for override in (arguments.kernel, arguments.covariance):
+        if override is None:
+            continue
+        candidate = override.resolve()
+        if candidate.is_dir():
+            files.extend(path for path in sorted(candidate.rglob("*")) if path.is_file())
+        elif candidate.is_file():
+            files.append(candidate)
+    seen = set()
+    for path in files:
+        resolved = path.resolve()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        _hash_file(digest, resolved)
+    return digest.hexdigest(), settings
+
+
+def _parameters_from_cached_table(table: pd.DataFrame, mode: str) -> list[ThreePlusOneParameters]:
+    if mode == "appearance-profile":
+        columns = ("fixed_delta_m2_41_eV2", "profiled_sin2_theta14", "derived_sin2_theta24")
+    elif mode == "electron-disappearance-profile":
+        columns = ("fixed_delta_m2_41_eV2", "selected_sin2_theta14_branch", "profiled_sin2_theta24")
+    else:
+        columns = ("fixed_delta_m2_41_eV2", "fixed_sin2_theta14", "profiled_sin2_theta24")
+    missing = set(columns).difference(table.columns)
+    if missing:
+        raise ValueError(f"pre-calibration cache lacks parameter columns: {sorted(missing)}")
+    return [ThreePlusOneParameters(*map(float, values)) for values in table.loc[:, columns].itertuples(index=False, name=None)]
+
+
+def _load_precalibration_cache(cache_directory: Path, key: str):
+    directory = cache_directory / key
+    manifest_path = directory / "manifest.json"
+    table_path = directory / "profile_and_gaussian.csv"
+    if not manifest_path.is_file() or not table_path.is_file():
+        return None
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if manifest.get("schema") != _SCAN_CACHE_SCHEMA or manifest.get("cache_key") != key:
+        return None
+    if sha256(table_path.read_bytes()).hexdigest() != manifest.get("table_sha256"):
+        raise RuntimeError(f"pre-calibration cache checksum failed: {directory}")
+    # The cache is numerical state, so require decimal-to-binary round trips
+    # rather than accepting the default parser's last-bit differences.
+    return pd.read_csv(table_path, float_precision="round_trip"), directory
+
+
+def _write_precalibration_cache(cache_directory: Path, key: str, settings, table: pd.DataFrame) -> Path:
+    directory = cache_directory / key
+    directory.mkdir(parents=True, exist_ok=True)
+    table_path = directory / "profile_and_gaussian.csv"
+    temporary = directory / "profile_and_gaussian.csv.tmp"
+    table.to_csv(temporary, index=False, float_format="%.17g")
+    temporary.replace(table_path)
+    write_json(directory / "manifest.json", {
+        "schema": _SCAN_CACHE_SCHEMA,
+        "cache_key": key,
+        "settings": settings,
+        "table_sha256": sha256(table_path.read_bytes()).hexdigest(),
+        "row_count": int(len(table)),
+        "note": "Exact deterministic profile and Gaussian-moment CLs cache; Toy-only controls are intentionally excluded from the key.",
+    })
+    return directory
 
 
 def _initialise_scan_process(analysis_config: str, bnb_overrides: dict[str, str], mode: str) -> None:
@@ -62,6 +168,48 @@ def _evaluate_toy_point_in_process(payload):
         batch_size=batch_size,
     )
     return int(point_index), comparison
+
+
+def _evaluate_profile_coordinate_in_process(coordinate):
+    """Profile one coordinate with the same functions in a process worker."""
+    if _PROCESS_ANALYSIS is None or _PROCESS_MODE is None:
+        raise RuntimeError("scan worker process was not initialised")
+    objective = _PROCESS_ANALYSIS.objective.chi2
+    if _PROCESS_MODE == "appearance-profile":
+        return profile_s14_s24_at_fixed_sin2_2theta_mue(
+            objective,
+            delta_m2_41_eV2=float(coordinate[0]),
+            sin2_2theta_mue=float(coordinate[1]),
+        )
+    if _PROCESS_MODE == "electron-disappearance-profile":
+        return profile_s14_s24_at_fixed_sin2_2theta_ee(
+            objective,
+            delta_m2_41_eV2=float(coordinate[0]),
+            sin2_2theta_ee=float(coordinate[1]),
+        )
+    if _PROCESS_MODE == "s14-profile":
+        return profile_three_plus_one(
+            objective,
+            {"delta_m2_41_eV2": float(coordinate[0]), "sin2_theta14": float(coordinate[1])},
+        )
+    raise ValueError(f"unsupported process profile mode: {_PROCESS_MODE!r}")
+
+
+def _map_profile_coordinates(function, coordinates, arguments, bnb_overrides):
+    """Preserve serial/thread behavior or use process-local analyses exactly."""
+    coordinates = tuple(coordinates)
+    if arguments.scan_workers == 1 or arguments.scan_parallel_backend == "threads":
+        return _ordered_thread_map(function, coordinates, arguments.scan_workers)
+    process_overrides = {key: str(value) for key, value in bnb_overrides.items()}
+    with ProcessPoolExecutor(
+        max_workers=arguments.scan_workers,
+        initializer=_initialise_scan_process,
+        initargs=(str(arguments.analysis_config), process_overrides, arguments.mode),
+    ) as executor:
+        chunksize = max(1, len(coordinates) // (arguments.scan_workers * 16))
+        return list(executor.map(
+            _evaluate_profile_coordinate_in_process, coordinates, chunksize=chunksize
+        ))
 
 
 def _format_duration(seconds: float) -> str:
@@ -111,6 +259,73 @@ def _stable_point_seed(base_seed: int, point_index: int) -> int:
     return int(sequence.generate_state(1, dtype=np.uint64)[0])
 
 
+def _profile_toy_at_scan_point(
+    analysis,
+    toy_dataset,
+    *,
+    mode: str,
+    tested_parameters: ThreePlusOneParameters,
+):
+    """Repeat the observed-data profile definition for one pseudo-experiment."""
+    objective = _objective_for_toy(analysis, toy_dataset)
+    if mode == "appearance-profile":
+        return profile_s14_s24_at_fixed_sin2_2theta_mue(
+            objective,
+            delta_m2_41_eV2=tested_parameters.delta_m2_41_eV2,
+            sin2_2theta_mue=tested_parameters.sin2_2theta_mue_exact,
+        ).best_fit
+    if mode == "electron-disappearance-profile":
+        return profile_s14_s24_at_fixed_sin2_2theta_ee(
+            objective,
+            delta_m2_41_eV2=tested_parameters.delta_m2_41_eV2,
+            sin2_2theta_ee=tested_parameters.sin2_2theta_ee_exact,
+        ).best_fit
+    if mode == "s14-profile":
+        return profile_three_plus_one(
+            objective,
+            {
+                "delta_m2_41_eV2": tested_parameters.delta_m2_41_eV2,
+                "sin2_theta14": tested_parameters.sin2_theta14,
+            },
+        ).best_fit
+    raise ValueError(f"Toy MC is not defined for scan mode {mode!r}")
+
+
+def _ordered_thread_map(function, items, workers: int):
+    """Evaluate independent orchestration tasks concurrently without reordering."""
+    items = tuple(items)
+    if workers == 1:
+        return [function(item) for item in items]
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        return list(executor.map(function, items))
+
+
+def _fixed_null_hypotheses(analysis, null_parameters):
+    """Build the scan-wide null spectra, covariances and factors exactly once."""
+    return tuple(
+        GaussianHypothesis(
+            prediction,
+            experiment.covariance_for_prediction(prediction),
+        )
+        for experiment in analysis.experiments
+        for prediction in (experiment.predict_counts(null_parameters),)
+    )
+
+
+def _pairs_with_fixed_null(analysis, null_hypotheses, tested_parameters):
+    return tuple(
+        (
+            null,
+            GaussianHypothesis(
+                prediction,
+                experiment.covariance_for_prediction(prediction),
+            ),
+        )
+        for experiment, null in zip(analysis.experiments, null_hypotheses, strict=True)
+        for prediction in (experiment.predict_counts(tested_parameters),)
+    )
+
+
 def _adaptive_toy_candidate_mask(
     result_table: pd.DataFrame,
     *,
@@ -125,7 +340,7 @@ def _adaptive_toy_candidate_mask(
         raise ValueError("adaptive analytic CLs bounds must bracket 0.05 inside [0, 1]")
     if neighbour_padding < 0:
         raise ValueError("adaptive neighbour padding must be non-negative")
-    required = {"fixed_delta_m2_41_eV2", x_name, "cls_quadratic"}
+    required = {"fixed_delta_m2_41_eV2", x_name, "cls_gaussian"}
     missing = required.difference(result_table.columns)
     if missing:
         raise ValueError(f"adaptive candidate table is missing columns: {sorted(missing)}")
@@ -133,7 +348,7 @@ def _adaptive_toy_candidate_mask(
     for _, group in result_table.groupby("fixed_delta_m2_41_eV2", sort=False):
         ordered = group.sort_values(x_name)
         indices = ordered.index.to_numpy(dtype=int)
-        values = ordered["cls_quadratic"].to_numpy(dtype=float)
+        values = ordered["cls_gaussian"].to_numpy(dtype=float)
         local = (values >= lower_analytic_cls) & (values <= upper_analytic_cls)
         crossing = np.flatnonzero(
             (values[:-1] - threshold) * (values[1:] - threshold) <= 0.0
@@ -180,7 +395,7 @@ def scan_three_plus_one() -> None:
         "--cls-calibration",
         choices=("analytic", "toy", "adaptive-toy"),
         default="analytic",
-        help="adaptive-toy runs analytic CLs globally and fixed-hypothesis toys only near its 0.05 contour",
+        help="adaptive-toy runs analytic CLs globally and fixed-point toys only near its 0.05 contour",
     )
     parser.add_argument(
         "--number-of-toys",
@@ -193,7 +408,7 @@ def scan_three_plus_one() -> None:
         "--toy-workers",
         type=int,
         default=1,
-        help="parallel fixed-hypothesis Toy evaluations in shared-memory threads; 1 is the deterministic conservative default",
+        help="parallel generic Toy evaluations; fixed-point production Toys use exact batched matrix solves",
     )
     parser.add_argument(
         "--scan-workers",
@@ -221,6 +436,17 @@ def scan_three_plus_one() -> None:
     parser.add_argument("--adaptive-analytic-cls-min", type=float, default=0.01)
     parser.add_argument("--adaptive-analytic-cls-max", type=float, default=0.1)
     parser.add_argument("--adaptive-neighbour-padding", type=int, default=1)
+    parser.add_argument(
+        "--precalibration-cache-directory",
+        type=Path,
+        default=ROOT / "outputs" / ".scan_cache" / "three_plus_one",
+        help="content-addressed cache for the exact profile and Gaussian pre-calibration",
+    )
+    parser.add_argument(
+        "--no-precalibration-cache",
+        action="store_true",
+        help="ignore and do not update the deterministic pre-calibration cache",
+    )
     parser.add_argument(
         "--adaptive-toy-point-limit",
         type=int,
@@ -288,14 +514,35 @@ def scan_three_plus_one() -> None:
         raise ValueError("sin2(2theta_ee) grid values must lie in (0, 1]")
     if any(not 0.0 < value <= 1.0 for value in arguments.sin2_theta14_grid):
         raise ValueError("sin2(theta14) grid values must lie in (0, 1]")
-    rows: list[dict[str, object]] = []
-    row_parameters: list[ThreePlusOneParameters] = []
+    cache_key = None
+    cache_settings = None
+    cache_directory_used = None
+    cached = None
+    if not arguments.no_precalibration_cache:
+        cache_key, cache_settings = _precalibration_cache_identity(
+            arguments, delta_m2_grid, appearance_grid, electron_disappearance_grid
+        )
+        cached = _load_precalibration_cache(arguments.precalibration_cache_directory, cache_key)
+    if cached is not None:
+        result_table, cache_directory_used = cached
+        row_parameters = _parameters_from_cached_table(result_table, arguments.mode)
+        print(f"Pre-calibration cache hit: {cache_directory_used} ({len(result_table)} points)", flush=True)
+    else:
+        rows: list[dict[str, object]] = []
+        row_parameters: list[ThreePlusOneParameters] = []
 
-    if arguments.mode == "appearance-profile":
-        points = profile_appearance_amplitude_grid(
-            objective,
-            delta_m2_grid,
-            appearance_grid,
+    if cached is not None:
+        pass
+    elif arguments.mode == "appearance-profile":
+        points = _map_profile_coordinates(
+            lambda coordinate: profile_s14_s24_at_fixed_sin2_2theta_mue(
+                objective,
+                delta_m2_41_eV2=coordinate[0],
+                sin2_2theta_mue=coordinate[1],
+            ),
+            product(delta_m2_grid, appearance_grid),
+            arguments,
+            bnb_overrides,
         )
         for point in points:
             if not np.isclose(
@@ -316,10 +563,15 @@ def scan_three_plus_one() -> None:
             })
             row_parameters.append(point.best_fit.parameters)
     elif arguments.mode == "electron-disappearance-profile":
-        points = profile_electron_disappearance_grid(
-            objective,
-            delta_m2_grid,
-            electron_disappearance_grid,
+        points = _map_profile_coordinates(
+            lambda coordinate: profile_s14_s24_at_fixed_sin2_2theta_ee(
+                objective,
+                delta_m2_41_eV2=coordinate[0],
+                sin2_2theta_ee=coordinate[1],
+            ),
+            product(delta_m2_grid, electron_disappearance_grid),
+            arguments,
+            bnb_overrides,
         )
         for point in points:
             if not np.isclose(
@@ -341,12 +593,14 @@ def scan_three_plus_one() -> None:
             })
             row_parameters.append(point.best_fit.parameters)
     else:
-        points = profile_grid(
-            objective,
-            {
-                "delta_m2_41_eV2": delta_m2_grid,
-                "sin2_theta14": arguments.sin2_theta14_grid,
-            },
+        points = _map_profile_coordinates(
+            lambda coordinate: profile_three_plus_one(
+                objective,
+                {"delta_m2_41_eV2": coordinate[0], "sin2_theta14": coordinate[1]},
+            ),
+            product(delta_m2_grid, arguments.sin2_theta14_grid),
+            arguments,
+            bnb_overrides,
         )
         for point in points:
             rows.append({
@@ -363,37 +617,55 @@ def scan_three_plus_one() -> None:
     output_directory = arguments.output_directory or result_directory(
         analysis.analysis_name, "three_plus_one", f"scan_{arguments.mode}_{arguments.cls_calibration}")
     output_directory.mkdir(parents=True, exist_ok=False)
-    result_table = pd.DataFrame(rows)
+    if cached is None:
+        result_table = pd.DataFrame(rows)
     null_parameters = ThreePlusOneParameters(1.0, 0.0, 0.0)
-    chi2_3nu = analysis.objective.chi2(null_parameters)
-    result_table["chi2_3nu"] = chi2_3nu
-    result_table["test_statistic_chi2_4nu_minus_chi2_3nu"] = (
-        result_table["chi2"] - chi2_3nu
-    )
-    if arguments.cls_calibration in {"analytic", "adaptive-toy"}:
+    fixed_null_hypotheses = _fixed_null_hypotheses(analysis, null_parameters)
+    if cached is None:
+        chi2_3nu = analysis.objective.chi2(null_parameters)
+        result_table["chi2_3nu"] = chi2_3nu
+        result_table["test_statistic_chi2_4nu_minus_chi2_3nu"] = (
+            result_table["chi2"] - chi2_3nu
+        )
+    else:
+        chi2_3nu = float(result_table["chi2_3nu"].iloc[0])
+    if cached is None and arguments.cls_calibration in {"analytic", "adaptive-toy"}:
         calibration_inputs = list(zip(
             row_parameters,
             result_table["test_statistic_chi2_4nu_minus_chi2_3nu"],
             strict=True,
         ))
 
-        def evaluate_quadratic(item):
+        def evaluate_gaussian(item):
             tested_parameters, observed_test_statistic = item
-            return quadratic_cls(
+            return asymptotic_cls(
                 float(observed_test_statistic),
-                _hypothesis_pairs(analysis, null_parameters, tested_parameters),
+                _pairs_with_fixed_null(analysis, fixed_null_hypotheses, tested_parameters),
             )
 
         if arguments.scan_workers == 1:
-            cls_rows = [evaluate_quadratic(item) for item in calibration_inputs]
+            cls_rows = [evaluate_gaussian(item) for item in calibration_inputs]
         else:
             with ThreadPoolExecutor(max_workers=arguments.scan_workers) as executor:
-                cls_rows = list(executor.map(evaluate_quadratic, calibration_inputs))
-        result_table["p_value_4nu_quadratic"] = [item.p_value_4nu for item in cls_rows]
-        result_table["p_value_3nu_quadratic"] = [item.p_value_3nu for item in cls_rows]
-        result_table["cls_quadratic"] = [item.cls for item in cls_rows]
+                cls_rows = list(executor.map(evaluate_gaussian, calibration_inputs))
+        result_table["p_value_4nu_gaussian"] = [item.p_value_4nu for item in cls_rows]
+        result_table["p_value_3nu_gaussian"] = [item.p_value_3nu for item in cls_rows]
+        result_table["cls_gaussian"] = [item.cls for item in cls_rows]
+        if not arguments.no_precalibration_cache:
+            cache_directory_used = _write_precalibration_cache(
+                arguments.precalibration_cache_directory,
+                cache_key,
+                cache_settings,
+                result_table,
+            )
+            print(f"Pre-calibration cache written: {cache_directory_used}", flush=True)
+    if cached is not None and arguments.cls_calibration in {"analytic", "adaptive-toy"}:
+        required_cached = {"p_value_4nu_gaussian", "p_value_3nu_gaussian", "cls_gaussian"}
+        missing_cached = required_cached.difference(result_table.columns)
+        if missing_cached:
+            raise RuntimeError(f"pre-calibration cache is incomplete: {sorted(missing_cached)}")
     if arguments.cls_calibration == "analytic":
-        cls_column = "cls_quadratic"
+        cls_column = "cls_gaussian"
     else:
         if arguments.cls_calibration == "toy":
             candidate_mask = np.ones(len(result_table), dtype=bool)
@@ -444,7 +716,9 @@ def scan_three_plus_one() -> None:
             pairs = _hypothesis_pairs(analysis, null_parameters, tested_parameters)
             null_hypotheses = tuple(pair[0] for pair in pairs)
             tested_hypotheses = tuple(pair[1] for pair in pairs)
-            fixed_test_statistic = prepare_fixed_test_statistic(null_hypotheses, tested_hypotheses)
+            fixed_test_statistic = prepare_fixed_test_statistic(
+                null_hypotheses, tested_hypotheses
+            )
 
             return int(point_index), toy_cls(
                 float(observed_test_statistic),
@@ -582,7 +856,7 @@ def scan_three_plus_one() -> None:
                 raise RuntimeError("complete Toy calibration left unevaluated scan points")
             cls_column = "cls_toy"
         else:
-            result_table["cls_adaptive_hybrid"] = result_table["cls_quadratic"]
+            result_table["cls_adaptive_hybrid"] = result_table["cls_gaussian"]
             result_table.loc[evaluated_mask, "cls_adaptive_hybrid"] = result_table.loc[
                 evaluated_mask, "cls_toy"
             ]
@@ -628,6 +902,18 @@ def scan_three_plus_one() -> None:
             "fig3b_profile": "fix delta_m2_41 and exact sin2_2theta_ee; profile s24 on both physical s14 branches",
         },
         "grid_note": "the default is a resolved logarithmic grid; increase --grid-points for convergence studies",
+        "precalibration_cache": {
+            "enabled": not arguments.no_precalibration_cache,
+            "hit": cached is not None,
+            "cache_key": cache_key,
+            "directory": str(cache_directory_used) if cache_directory_used else None,
+            "scope": "observed-data profile plus fixed 3nu/4nu hypotheses and covariances reusable by Gaussian or fixed-point Toy calibration",
+            "toy_only_controls_excluded_from_key": [
+                "number_of_toys", "toy_seed", "toy_batch_size",
+                "adaptive_analytic_cls_min", "adaptive_analytic_cls_max",
+                "adaptive_neighbour_padding", "adaptive_toy_point_limit",
+            ],
+        },
         "plot_colour_note": f"the heatmap and colour bar show {arguments.cls_calibration} CLs from 0 to 1; the red contour is CLs=0.05",
         "statistical_inference": {
             "test_statistic": "chi2_4nu - chi2_3nu",
@@ -636,14 +922,14 @@ def scan_three_plus_one() -> None:
                 "empirical Toy MC under both hypotheses; no assumed test-statistic distribution"
                 if arguments.cls_calibration == "toy"
                 else (
-                    "global quadratic-form CLs with fixed-hypothesis Toy MC only in the declared adaptive contour band"
+                    "global Gaussian-moment CLs with fixed-point Toy MC only in the declared adaptive contour band"
                     if arguments.cls_calibration == "adaptive-toy"
-                    else "fixed-hypothesis generalized quadratic-form inversion; no Toy MC"
+                    else "fixed-hypothesis Gaussian approximation from analytic mean and variance; no Toy MC"
                 )
             ),
             "tail": "right-tailed under both fixed hypotheses",
             "profile_treatment": (
-                "profile the observed data once at each scan point, then hold the resulting 3nu and 4nu predictions and covariances fixed for every pseudo-experiment"
+                "profile observed data once at each scan point, then keep the resulting 3nu and 4nu predictions and covariances fixed for every pseudo-experiment"
                 if toy_enabled
                 else "the observed-data profiled 4nu prediction is held fixed while calibrating each point"
             ),
@@ -809,6 +1095,7 @@ def scan_one_plus_three_plus_one() -> None:
 
     null_parameters = OnePlusThreePlusOneParameters.three_neutrino_null()
     null_chi2 = analysis.objective.chi2(null_parameters)
+    fixed_null_hypotheses = _fixed_null_hypotheses(analysis, null_parameters)
     q41_values = np.asarray(arguments.delta_m2_41_absolute_grid_eV2, dtype=float)
     q51_values = np.asarray(arguments.delta_m2_51_grid_eV2, dtype=float)
     total_points = q41_values.size * q51_values.size
@@ -834,23 +1121,29 @@ def scan_one_plus_three_plus_one() -> None:
         )
         tested = profile.best_fit.parameters
         observed_test_statistic = profile.best_fit.chi2 - null_chi2
-        pairs = extended_hypothesis_pairs(analysis, null_parameters, tested)
+        pairs = (
+            _pairs_with_fixed_null(analysis, fixed_null_hypotheses, tested)
+            if arguments.cls_calibration == "analytic"
+            else extended_hypothesis_pairs(analysis, null_parameters, tested)
+        )
 
         if extended_same_hypotheses(pairs):
             cls_value = p_4nu = p_3nu = 1.0
             calibration_note = "tested spectrum equals the nested 3nu boundary"
             toy_count_4nu = toy_count_3nu = -1
         elif arguments.cls_calibration == "analytic":
-            comparison = quadratic_cls(observed_test_statistic, pairs)
+            comparison = asymptotic_cls(observed_test_statistic, pairs)
             cls_value = comparison.cls
             p_4nu = comparison.p_value_4nu
             p_3nu = comparison.p_value_3nu
-            calibration_note = "fixed-hypothesis generalized quadratic-form inversion; no pseudo-experiments"
+            calibration_note = "fixed-hypothesis Gaussian approximation from analytic mean and variance; no pseudo-experiments"
             toy_count_4nu = toy_count_3nu = -1
         else:
             null_hypotheses = tuple(pair[0] for pair in pairs)
             tested_hypotheses = tuple(pair[1] for pair in pairs)
-            fixed_test_statistic = prepare_fixed_test_statistic(null_hypotheses, tested_hypotheses)
+            fixed_test_statistic = prepare_fixed_test_statistic(
+                null_hypotheses, tested_hypotheses
+            )
 
             comparison = toy_cls(
                 observed_test_statistic,
@@ -866,7 +1159,7 @@ def scan_one_plus_three_plus_one() -> None:
             p_3nu = comparison.p_value_3nu
             toy_count_4nu = comparison.right_tail_count_under_4nu
             toy_count_3nu = comparison.right_tail_count_under_3nu
-            calibration_note = "observed-data profile followed by fixed-hypothesis Toy MC; no Toy refits"
+            calibration_note = "observed-data profile followed by fixed-point batched Toy MC; no Toy refits"
 
         row: dict[str, object] = {
             "delta_m2_41_absolute_eV2": q41,

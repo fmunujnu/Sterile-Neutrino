@@ -1,0 +1,12 @@
+experiment: miniboone
+release: nue2020_combined
+channels:
+  - nu_mode_electron_like_11_bins
+  - nu_mode_muon_control_8_bins
+  - antinu_mode_electron_like_11_bins
+  - antinu_mode_muon_control_8_bins
+oscillation_parameterization: two_flavour_appearance
+statistic: gaussian_chi2_plus_logdet
+official_contours: frequentist_coverage_calibrated
+scientific_status: parallel_validation_not_registered_in_joint_global_fit
+source_manifest: data/experiments/miniboone/shared/raw/official_nue2020_combined/SHA256SUMS.csv

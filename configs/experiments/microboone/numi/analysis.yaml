@@ -2,11 +2,14 @@ analysis_name: "microboone_numi_unavailable"
 availability: "inputs_unavailable"
 include_in_analysis: false
 baseline_km: 0.680
+energy_baseline_distribution:
+  path: "data/experiments/microboone/numi/derived/public_dk2nu_energy_baseline/psi_exposure_weighted_four_flavours.csv"
+  scientific_status: "Public dk2nu RHC conditional L|E distributions; FHC uses the documented charge-conjugate proxy. The energy marginal is not multiplied again because the empirical event kernel already contains flux."
 reference_parameters:
   delta_m2_41_eV2: 1.2
   sin2_theta14: 0.0
   sin2_theta24: 0.0
-reason: "A diagnostic four-channel event adapter exists, but it borrows the BNB response, omits 3--5 GeV response support, freezes aggregate Background, and has no validated BNB--NuMI cross-covariance prescription."
+reason: "The active joint adapter uses an energy- and flavour-dependent NuMI baseline average, but it still borrows the BNB response, omits 3--5 GeV response support, freezes aggregate Background, and is not a collaboration-exact detector model."
 diagnostic_flux_inputs:
   scientific_status: "PDF-vector reconstruction only; not validated as official numerical flux release"
   components_directory: "data/experiments/microboone/numi/inputs/flux_components"

@@ -2,6 +2,52 @@
 
 日期：2026-09-03。本文是可变的当前验证记录，不是长期物理原则。
 
+## Unified experiment-adapter boundary (2026-09-06)
+
+- Moved the MicroBooNE, MiniBooNE, and LSND orchestration boundaries to
+  `src/sterile_fit/experiments/<experiment>/adapter.py`; removed their former
+  package-top-level modules without compatibility shims.
+- Added `experiments/interface.py` as the shared likelihood and optional binned
+  prediction contract. No probability, covariance, profile, calibration,
+  threshold, random sequence, or plotting arithmetic was changed.
+- Updated active imports, tests, study consumers, `run.py`, and architecture
+  documentation. Frozen migration evidence was intentionally left unchanged.
+- Validation: full suite `143 passed`; `python run.py check --analysis all`
+  passed; MiniBooNE and LSND command help loaded through their new adapters.
+- This validates imports and unchanged tested behavior, not detector-level or
+  publication-level physics agreement.
+
+## LSND final-2001 public-record adapter (2026-09-05)
+
+- Added only `data/experiments/lsnd/`, `configs/experiments/lsnd/`,
+  `src/sterile_fit/experiments/lsnd/` and its narrow
+  `run.py lsnd` dispatch, and `tests/test_lsnd.py`. MicroBooNE, MiniBooNE and
+  the common 3+1 physics core were not modified.
+- Source basis: Aguilar *et al.*, PRD 64, 112007 / hep-ex/0104049. The
+  manifest records exact paper pages: Eq. (1.1) p.2 gives eV2,m,MeV units;
+  Sec. IX.B--E pp.23--24 gives the 5697-event four-variable likelihood and
+  Gaussian-weighted background variation; Sec. IX.F pp.24--25 says full FC
+  generated-data construction was not followed and final regions use
+  constant slices; Fig.27 p.64 states Lmax-L<2.3/4.6.
+- The implementation verifies only the deterministic identity
+  `sin2(2theta_mue)=4|Ue4|^2|Umu4|^2`, MeV/m conversion, zero appearance
+  amplitude, printed scalar values, and parsable official/core-mapping output.
+  It does not calculate an LSND likelihood, surface correlation/RMSE, contour
+  displacement, covariance property, or coverage/Toy result.
+- The final publication does not provide a machine-readable event table,
+  four-dimensional signal/background PDFs, nuisance/background inputs,
+  covariance, likelihood grid, or contour coordinates. No publication image
+  was digitised. A local PDF download was not retained after its request was
+  cancelled, so the manifest leaves its hash blank rather than inventing one.
+- Executed: `python -B -m pytest -q -p no:cacheprovider --basetemp
+  tmp/lsnd_pytest_20260905b tests/test_lsnd.py` (6 passed), followed by the
+  final source-manifest check `tmp/lsnd_final_pytest_20260905` (7 passed);
+  `python -B run.py lsnd --kind official --batch lsnd_final_20260905`;
+  `python -B run.py lsnd --kind core-mapping --batch lsnd_final_20260905`;
+  the full test command with an isolated `tmp/lsnd_full_pytest_20260905`
+  basetemp (138 passed); and `python -B run.py check` (all declared existing
+  checks passed). All three LSND test temporary directories were removed after use.
+
 ## 变更边界
 
 - 活动运行代码由原src的40个Python文件和scripts的20个文件，归并为src的19个文件（含包标记和paths）及根入口run.py。
@@ -50,6 +96,21 @@ Windows环境下系统临时目录曾有权限问题，因此本轮使用独立w
 - 未运行完整1+3+1质量平面；该模型覆盖源码比较、原单元测试、代表点预测/目标函数和零混合闭合。
 - 未重新下载数据、提取PDF、训练kernel或更改统计近似。
 - 保留原经验锚点、固定聚合背景、NuMI借用响应及真能支持截断的科学限制。
+
+## 2026-09-12 NuMI公开dk2nu能量—基线输入
+
+- 新NuMI适配路径在零混合时与原固定基线逐bin闭合；非零混合测试确认两者不同。该路径现用于active BNB+NuMI联合分析，固定基线仅保留为诊断对照。
+- 缓存的3+1解析基线平均与逐L-bin调用共享核心概率比较，`rtol=atol=2e-14`通过。
+- 定向测试：`8 passed`。完整NuMI-only官方100x61格点比较已运行，使用原profile和固定`Delta chi2=5.99`，未使用CLs或Toy。
+- 该结果仍借用BNB响应、冻结聚合背景，并以旧公开RHC dk2nu及FHC电荷共轭代理构造条件基线分布，不能解释为合作组正式输入。
+
+## 2026-09-12 非Toy活动校准改为Gaussian
+
+- `analytic`活动入口不再调用广义二次型特征函数反演，改为固定3nu/4nu假设下T的解析均值、方差及Gaussian右尾；输出列改为`p_value_*_gaussian`和`cls_gaussian`，缓存schema升至2以禁止误读旧结果。
+- 扫描层只构造一次全网格共享的固定3nu假设；核心Gaussian公式保持冻结实现。一个208-bin联合代表点中，Gaussian校准约0.0087秒，旧二次型反演约0.271秒；两者CLs不同是方法改变，不是数值误差。
+- 旧二次型函数只保留给独立历史验证，不被非Toy主扫描调用。
+- 非Toy profile现会兑现`--scan-parallel-backend processes`。64点小网格因进程启动从约7.79秒增至约9.76秒；256点联合网格由串行22.61秒降至2进程14.53秒（约1.56倍），两种运行的全部数值列逐点完全一致。故多进程只建议用于中大型网格。
+- 完整测试`145 passed`，统一`run.py check`通过。
 - 少量Toy不验证尾概率精度；前后相等不等于合作组精确复现或全参数空间正确。
 - 既有根目录.pytest_cache和outputs/archive内旧缓存有权限锁，未绕过权限处理。
 
@@ -136,3 +197,104 @@ Windows环境下系统临时目录曾有权限问题，因此本轮使用独立w
 - profile平均使T下降1.142–3.602；离散分支切换并非唯一原因。固定二次型不能作为这两种profile的统一已验证替代。
 - 8/12个二次型观测尾概率落在同时区间外，但6个CLs比值仍在较宽同时区间内；不得混淆CDF失配、比值抵消和边界精度。近边界点的区间跨0.05，未认证完整排除线位移。
 - 六张图及完整报告在fig3b_profile1000_20260903/assessment/REPORT.md；运行图点0和评估图点2已目视检查。旧Fig3a报告继续保留，不冒充本轮全部重算。
+# 2026-09-04 3+1 profile与二次型前置缓存
+
+- 修改范围：仅3+1网格调度、派生缓存和记录；没有改变概率、预测、协方差、profile目标/边界/容差、二次型反演或CLs定义。
+- 定向测试：`python -B -m pytest -q -p no:cacheprovider --basetemp tmp/pytest_cache_optimization tests/test_profile_likelihood.py tests/test_scan_plotting.py`，缓存与调度相关测试通过。
+- 实际入口：BNB-only 8x8解析小网格首次运行写入缓存，第二次命中缓存；两份结果CSV用round-trip解析后DataFrame完全相等，最大数值差为0。
+- Toy控制复用：相同8x8网格改为adaptive-toy、Toy数7、选择带0.005--0.2且诊断点上限0，命中同一缓存，前Toy阶段0.8秒。
+- 全套测试：127项中126项通过；唯一失败是本轮前已存在的冻结布局测试仍要求旧的“每个Toy重新profile”函数体，而活动代码已经采用“观测数据profile后固定”策略，本轮未修改calibration.py。
+- `python -B run.py check`通过全部BNB、联合协方差、概率、基线、kernel闭合及1+3+1零点检查。
+- 尚未运行：61x61生产扫描；小网格性能不能直接外推为完整网格加速倍数。
+
+# 2026-09-04 固定扫描点与批量Toy二次型
+
+- 澄清后的活动策略：3+1与1+3+1均只profile每个扫描点的观测数据一次；Toy内部禁止重新profile。
+- 每个扫描点缓存固定3nu/4nu均值、协方差Cholesky分解；同一批Toy用多右端三角求解批量计算T，概率模型、随机流、尾计数和有限样本修正不变。
+- 前置内容寻址缓存继续复用观测profile及二次型选择面；改变Toy数量或范围无需重跑全网格前置阶段。
+- 208维、1000个人工向量的纯T计算对照：批量路径约4.49倍于逐事件路径；最大绝对浮点差3.55e-15，未改变尾部判定。该微基准不包含伪数据生成、I/O或扫描调度，不能直接等同完整运行加速倍数。
+- 全套测试128项通过；包含固定统计量批量/逐事件一致性、相同种子在不同batch size下的一致性和缓存校验。
+- 按用户要求未运行真实大规模Toy或生产扫描。
+
+# 2026-09-05 MiniBooNE 2020平行验证入口
+
+- 新增MiniBooNE ν+反ν combined公开发布的只读纯文本副本、直接URL与逐文件SHA-256；未数字化图片、插值或重分bin。
+- 新适配器独立读取11+8+11+8观测bin、两份逐事件全转换样本和60x60分数协方差；按发布说明折叠为38维并加入signal统计对角项。MicroBooNE活动物理代码未因本功能修改。
+- 定向测试3 passed：输入形状、官方36100点似然面最小值、L/E单位、信号振幅线性、38维协方差对称正定。
+- `python -B run.py miniboone --kind official`实际运行完成，输出官方发布曲面及官方频率学派覆盖率轮廓。
+- `python -B run.py miniboone --kind scan`实际运行完整190x190网格；使用逐事件P*w/N与`chi2+log|M|`。网格对齐后相对似然面与官方曲面的Pearson相关系数约0.99999975，RMSE约0.233，最大绝对差约1.046；官方与本地网格极小值相邻但不完全相同。
+- 上述高度一致是公开Gaussian NLL重建验证，不证明本地已复现合作组的频率学派覆盖率生成；本地尚未实现MiniBooNE fake-data coverage，也未注册跨实验联合fit。
+- MiniBooNE逐事件概率随后改为调用活动3+1短基线appearance核心；有效振幅的确定性分解严格满足4|Ue4|²|Umu4|²等于官方横坐标。改动前后36100点完整曲面的最大绝对变化3.21e-11、平均绝对变化1.10e-12，最优网格点不变，确认只有浮点舍入级差异。
+- 3+1接入后定向测试7 passed；全套132 passed且统一`run.py check`通过。没有把公开包无法识别的P(mumu)/P(ee) disappearance加入MiniBooNE控制样本或背景。
+- 从已重算的36100点曲面增加无热力图轮廓叠加：本地使用二维固定似然阈值2.30/4.605/9.210/11.83，官方点保持发布的coverage校准坐标；该图是方法差异诊断，不把两类线称为同一统计量。
+
+# 2026-09-05 MiniBooNE 90% coverage 5000-Toy试验
+
+- 在官方90%轮廓选择6个代表点，每点5000份、共30000份38维Gaussian Toy；使用各点协方差的Cholesky因子抽样。
+- 每份Toy在完整190x190（36100点）发布网格上重新寻找最优NLL，并把通常不落在网格节点的被检验真点本身加入候选；全部Toy统计量非负。
+- 官方轮廓点所需的观测相对NLL约4.988--5.320；固定二维90%阈值为4.605；本地Toy 90%临界值约4.901--5.894。
+- 按与官方所需临界值的绝对差计，Toy在6点中的4点更接近，固定阈值在2点更接近。5000-Toy bootstrap区间显示部分差异超过纯Toy抽样波动，不能声称Toy实现已复现官方coverage。
+- 主要未决项是合作组未完整公开的fake-data细节及连续全局拟合与本地发布网格拟合的差别；该研究不进入活动推断。首次使用NumPy通用多元正态采样的试运行因高条件数协方差触发警告，已判无效并删除，未用于上述结果。
+
+# 2026-09-06 MicroBooNE沿排除线分块的低Toy位移试验
+
+- 沿既有Fig. 3a/3b固定Toy排除线各切分6个连续质量区块；每块采样3个质量位置和5个振幅位置，每个生成假设使用50份Toy。
+- 共评估180个扫描点和18000份逐Toy profile，实际耗时997秒；活动扫描、预测和协方差实现未修改。
+- 局部平面仅在估计的CLs=0.05根落入实际采样窄带时用于平移；超出采样带的区块标记为`unresolved_outside_sample_band`，禁止外推。
+- Fig. 3a有2/6区块得到带内粗估计，Fig. 3b有3/6区块得到带内粗估计；其余区块在50 Toy精度下不足以定位交点。
+- 该结果只用于估计方向和量级，不是coverage校准的正式排除线。
+
+# 2026-09-06 MicroBooNE排除线尾部稀疏性探针
+
+- 不使用区块或边界拟合，直接沿既有Fig. 3a和Fig. 3b排除线各取24点；每点、每个生成假设使用50份Toy。
+- Fig. 3a的4nu尾计数中15/24为零，均值0.542；Fig. 3b中16/24为零，均值0.375，两者中位数均为零。
+- 在两图共有的约0.18--14 eV2质量范围内，Fig. 3a的4nu尾计数10/12为零、均值0.333；Fig. 3b为15/23为零、均值0.391。该精度不能稳定判断两图4nu尾部谁更高。
+- 同一共有范围内，3nu尾计数均非零；Fig. 3a均值10.17、中位数9，Fig. 3b均值14.22、中位数11。这里只能作为相对稀疏性诊断，不是精确概率比较。
+
+# 2026-09-06 逐Toy-profile低统计点态带
+
+- 复用沿既有排除线窄带的180个参数点；这些点的每一份Toy均单独执行profile，每点、每个生成假设各有50份Toy。
+- 对已观测尾计数作Jeffreys平滑的二项重复运行重抽样，估计10、20、30、50 Toy下的点态95%交点范围；未重新生成更高统计的逐Toy-profile样本。
+- 严格限制到5000-Toy参考值处于CLs=0.005--0.1的采样点后，50 Toy时Fig. 3a仅9个质量点、Fig. 3b仅10个质量点能在已有振幅采样带内产生交点；更低Toy时大量质量点完全无法定位边界。
+- 已解析点的上下振幅中位数比在50 Toy时约为Fig. 3a的1.27和Fig. 3b的1.22；该数值受“只有能解析的点才进入汇总”的强选择效应影响，实测宽度没有随Toy数单调缩小，不能据此拟合可靠的1/sqrt(N)缩放。
+- 图中5000-Toy参考线使用活动的观测profile后固定假设策略，不是高统计逐Toy-profile真值；低Toy蓝带不能解释为保证覆盖最终逐Toy-profile排除线的同时置信带。
+
+# 2026-09-06 CLs窄带200份逐Toy-profile扫描
+
+- 从5000-Toy参考网格选择CLs=0.01--0.07区域，沿质量方向每隔一个切片保留一个，并在保留切片中计算全部带内振幅点；Fig. 3a为82点，Fig. 3b为151点。
+- 每个参数点分别在3nu和4nu生成假设下运行200份Toy，每份Toy单独profile；共保存93200条逐Toy检验量和尾部标记到可检查CSV。
+- 每个质量切片在log振幅上对CLs作分段线性插值；对5000次参数化bootstrap得到的交点分布取2.5%、50%、97.5%分位，形成未经平滑的下界、预测线和上界。
+- 两图各28个质量切片均得到三条插值线。有效bootstrap交点比例均值为Fig. 3a的0.581和Fig. 3b的0.673；局部折点反映低尾计数、非单调CLs和分支切换，不能解释为物理精细结构。
+- 追加逐横排拟合诊断：每个固定质量切片把CLs作为log振幅的一维因变量作线性拟合，并允许交点外推到Toy采样带外、但裁剪到完整扫描坐标范围；不进行二维图像插值或跨质量平滑。
+- 横排拟合的中位预测交点在Fig. 3a有7/28个、Fig. 3b有13/28个落在实际Toy振幅范围外；中心斜率方向异常的切片分别为6/28和3/28。bootstrap斜率接近零时上下界会延伸至扫描边界，因此宽蓝线是低统计不可辨识性，不是精确物理区间。
+
+# 2026-09-07 Fig. 3a右下角1000份逐Toy-profile收敛检查
+
+- 在图面坐标0.7<=sin2(2theta_mue)<=1、0.01<=Delta m2<=0.05 eV2内计算完整3x11正式网格，共33点；每点在3nu和4nu下各1000份Toy，每份单独profile。
+- 33点和66000条逐Toy检验量全部保存；使用同一随机流的前500、750、1000份作嵌套收敛比较。
+- 对每个固定振幅沿log质量分段线性寻找CLs=0.05，并锁定最靠近中心交点的同一分支，避免bootstrap切换到约0.045 eV2处的第二交点。
+- 1000-Toy中位交点在三个振幅处分别为0.02351、0.02150、0.02050 eV2；相对500-Toy中位线移动分别为+0.00038、+0.00005、+0.00038 eV2。
+- 1000-Toy点态95%全宽分别为0.00221、0.00158、0.00114 eV2；为对应500-Toy宽度的0.79、0.86、0.50。中心线达到约2%量级稳定，但仅三个振幅点，不能证明全局排除线收敛。
+- 与正式`quadratic_non_toy_20260904/scan_fig3a_analytic`逐参数profile加二次型校准线比较：正式交点为0.02373、0.02158、0.02034 eV2；1000份逐Toy-profile中位交点为0.02351、0.02150、0.02050 eV2，差值绝对值为0.00022、0.00009、0.00016 eV2。该局部两种统计处理在约1%量级一致。
+
+# 2026-09-06 LSND公开DAR总率3+1 likelihood初步扫描
+
+- 沿用活动3+1短基线appearance概率，不修改核心；新增LSND实验适配层，将任意appearance概率对公开可重建的DAR权重积分。
+- 输入为论文发布的平均振荡概率`0.264% +/- 0.067%(stat) +/- 0.045%(syst)`、muon-DAR反muon中微子Michel谱、IBD主导相空间，以及30 m中心距离和8.3 m轴向长度。
+- 明确缺少源尺寸、横向几何、能量依赖效率、重建迁移和四维事件PDF；结果是可移植到未来1+3+1概率的rate-only近似，不是Kopp获得的LSND合作组likelihood。
+- 241x241扫描共58081点。论文四维best-fit `(Delta m2, sin2(2theta_mue))=(1.2 eV2, 0.003)` 在总率近似中预测平均概率0.002218，对应相对最优`Delta[-2 ln L]=0.274`，与公开总率相容。
+- 总率项产生主低质量斜带和高质量平均振荡带；因只有一个观测量，最小值沿曲线退化，不能自行确定官方best-fit、高质量小岛或DAR+DIF形状信息。
+- 使用与论文constant-slice相同的二维阈值4.605和9.210绘制90%/99%线；这些是固定likelihood切片，不是该近似的coverage校准结果。
+- 验证：`tests/test_lsnd.py`为10 passed；完整测试142 passed；`python -B run.py check`全部通过。输出位于`outputs/lsnd_final_2001/three_plus_one/public_rate_approximation_20260906_v2/`。
+
+# 2026-09-06 LSND最终论文公开分箱谱重加权研究
+
+- 只新增`studies/lsnd_public_spectrum_reweighting/`研究路径；未修改MicroBooNE、MiniBooNE或活动振荡核心，也未把读图结果静默提升为官方输入。
+- 直接读取本地LSND最终论文PDF第54页Fig.16和第62页Fig.24的矢量路径，不使用截图像素点选；分别恢复5个正电子能量bin和11个`L/E` bin的beam excess、非束流宇宙线扣除后仍保留的两类中微子背景、低质量差参考信号和非对称误差棒。
+- Fig.16矢量提取闭合：beam excess总和50.701，对论文印刷总数49.1的差为1.601；背景总和16.833，对16.9的差为-0.067；参考信号总和32.585，对32.2的差为0.385。程序将这些容差写成fail-fast检查。
+- 用低质量差小相位下`P`正比于`(L/E)^2`反推每bin等效kernel形状，并以论文的`33300 * 0.39`（100%转化事件数乘`Rgamma>10`关联光子效率）定标；每bin概率采用48点Gauss-Legendre积分，不再只取bin中心。
+- 独立bin Gaussian近似使用图示beam-excess误差；没有公开bin间协方差、背景nuisance或四维事件PDF，因此本结果是可用于未来1+3+1概率的公开资料降维近似，不是LSND官方likelihood或coverage复现。
+- 后续按最终论文已公布误差加入两个逐扫描点解析profile的归一化nuisance：信号相对宽度`sqrt(0.10^2+0.07^2)=12.2%`，总中微子背景相对宽度`2.3/16.9=13.6%`。仍未虚构逐bin形状误差或协方差；上一条中的“没有背景nuisance”应读作没有公开的逐bin/分量背景nuisance。
+- 241x241的3+1扫描中，论文最佳点附近相对最低点的`Delta chi2`为Fig.16的0.996和Fig.24的1.224，均通过预设`<2.3`内部相容检查。两套90%轮廓在低质量差主带接近；高质量差起伏对分箱敏感，不判作可靠物理细节。
+- 实际运行完成；`tests/test_lsnd.py`在工作区独立临时目录下10 passed，研究目录`git diff --check`通过。默认pytest缓存目录仍因既有Windows权限锁产生非物理警告。
+- 输出：`outputs/studies/lsnd_public_spectrum_reweighting/latest/`，包含两份提取CSV、两份重绘谱、两份扫描CSV、各自参数空间图、轮廓对比图和机器可读验证metadata。

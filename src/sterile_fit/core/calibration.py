@@ -313,6 +313,72 @@ FixedHypothesisChi2 = Callable[[ToyDataset], float]
 
 
 @dataclass(frozen=True, slots=True)
+class PreparedFixedTestStatistic:
+    """Cached fixed hypotheses with scalar and exactly batched evaluation."""
+
+    null_hypotheses: tuple[GaussianHypothesis, ...]
+    tested_hypotheses: tuple[GaussianHypothesis, ...]
+    null_lower_factors: tuple[FloatMatrix, ...]
+    tested_lower_factors: tuple[FloatMatrix, ...]
+
+    def __call__(self, toy_dataset: ToyDataset) -> float:
+        if len(toy_dataset) != len(self.null_hypotheses):
+            raise ValueError("toy dataset and hypothesis contribution counts differ")
+        total = 0.0
+        for observation, null, tested, null_lower, tested_lower in zip(
+            toy_dataset,
+            self.null_hypotheses,
+            self.tested_hypotheses,
+            self.null_lower_factors,
+            self.tested_lower_factors,
+            strict=True,
+        ):
+            values = np.asarray(observation, dtype=float)
+            tested_white = solve_triangular(
+                tested_lower, values - tested.mean, lower=True, check_finite=False
+            )
+            null_white = solve_triangular(
+                null_lower, values - null.mean, lower=True, check_finite=False
+            )
+            total += float(tested_white @ tested_white - null_white @ null_white)
+        return total
+
+    def evaluate_batch(self, draws: tuple[NDArray[np.float64], ...]) -> FloatVector:
+        """Evaluate all rows using cached factors and multi-right-hand-side solves."""
+        if len(draws) != len(self.null_hypotheses):
+            raise ValueError("toy draws and hypothesis contribution counts differ")
+        result = np.zeros(draws[0].shape[0], dtype=float)
+        for values, null, tested, null_lower, tested_lower in zip(
+            draws,
+            self.null_hypotheses,
+            self.tested_hypotheses,
+            self.null_lower_factors,
+            self.tested_lower_factors,
+            strict=True,
+        ):
+            values = np.asarray(values, dtype=float)
+            if values.ndim != 2 or values.shape[1] != null.mean.size:
+                raise ValueError("batched toy draws have the wrong shape")
+            tested_white = solve_triangular(
+                tested_lower,
+                (values - tested.mean[None, :]).T,
+                lower=True,
+                check_finite=False,
+            )
+            null_white = solve_triangular(
+                null_lower,
+                (values - null.mean[None, :]).T,
+                lower=True,
+                check_finite=False,
+            )
+            result += np.sum(tested_white * tested_white, axis=0)
+            result -= np.sum(null_white * null_white, axis=0)
+        if not np.all(np.isfinite(result)):
+            raise RuntimeError("batched toy test statistic returned non-finite values")
+        return result
+
+
+@dataclass(frozen=True, slots=True)
 class ToyClsResult:
     """Empirical CLs result and auditable Monte Carlo diagnostics."""
 
@@ -405,6 +471,9 @@ def _evaluate_toys(
 ) -> FloatVector:
     number_of_toys = draws[0].shape[0]
 
+    if isinstance(test_statistic, PreparedFixedTestStatistic):
+        return test_statistic.evaluate_batch(draws)
+
     def evaluate(index: int) -> float:
         value = float(test_statistic(tuple(component[index] for component in draws)))
         if not isfinite(value):
@@ -428,9 +497,22 @@ def prepare_fixed_test_statistic(null_hypotheses, tested_hypotheses):
     or data-dependent covariance update is performed inside a pseudo-experiment.
     This is the project prescription, not a confirmed collaboration implementation.
     """
-    null_chi2 = prepare_fixed_hypothesis_chi2(null_hypotheses)
-    tested_chi2 = prepare_fixed_hypothesis_chi2(tested_hypotheses)
-    return lambda dataset: tested_chi2(dataset) - null_chi2(dataset)
+    null_hypotheses = tuple(null_hypotheses)
+    tested_hypotheses = tuple(tested_hypotheses)
+    if not null_hypotheses or len(null_hypotheses) != len(tested_hypotheses):
+        raise ValueError("equal non-empty 3nu and 4nu hypothesis lists are required")
+    return PreparedFixedTestStatistic(
+        null_hypotheses=null_hypotheses,
+        tested_hypotheses=tested_hypotheses,
+        null_lower_factors=tuple(
+            cholesky(item.covariance, lower=True, check_finite=False)
+            for item in null_hypotheses
+        ),
+        tested_lower_factors=tuple(
+            cholesky(item.covariance, lower=True, check_finite=False)
+            for item in tested_hypotheses
+        ),
+    )
 
 
 def _empirical_right_tail(
@@ -458,9 +540,10 @@ def toy_cls(
 ) -> ToyClsResult:
     """Calibrate two empirical distributions of the supplied statistic.
 
-    Production callers first profile observed data, then use
-    prepare_fixed_test_statistic: the same fixed hypotheses generate and score
-    Toys. This generic sampler does not itself fit or change any parameters.
+    Production fixed-hypothesis callers pass ``PreparedFixedTestStatistic`` so
+    every batch reuses the point's matrices and is evaluated as one exact
+    multi-right-hand-side quadratic-form solve. Generic callables retain the
+    scalar path for diagnostics.
     """
     if not isfinite(observed_test_statistic):
         raise ValueError("observed test statistic must be finite")
@@ -481,14 +564,18 @@ def toy_cls(
     # Separate deterministic streams make results independent of evaluation order.
     seed_sequence = np.random.SeedSequence(seed)
     seed_3nu, seed_4nu = seed_sequence.spawn(2)
-    null_lower_factors = tuple(
-        cholesky(item.covariance, lower=True, check_finite=False)
-        for item in null_hypotheses
-    )
-    tested_lower_factors = tuple(
-        cholesky(item.covariance, lower=True, check_finite=False)
-        for item in tested_hypotheses
-    )
+    if isinstance(test_statistic, PreparedFixedTestStatistic):
+        null_lower_factors = test_statistic.null_lower_factors
+        tested_lower_factors = test_statistic.tested_lower_factors
+    else:
+        null_lower_factors = tuple(
+            cholesky(item.covariance, lower=True, check_finite=False)
+            for item in null_hypotheses
+        )
+        tested_lower_factors = tuple(
+            cholesky(item.covariance, lower=True, check_finite=False)
+            for item in tested_hypotheses
+        )
 
     def draw_and_evaluate(
         hypotheses: Sequence[GaussianHypothesis],

@@ -8,3 +8,9 @@ shared/raw 保留公共发布；derived 和 reweighting 是可复用输入。运
 
 当前路径、准备命令和使用范围统一见根目录 README.md 与 docs/ARCHITECTURE.md。
 数据变更必须更新来源/哈希、配置、输入说明和相关回归；详见 docs/MAINTENANCE.md。
+
+LSND 的 `lsnd/` 只保存最终论文逐项标量、来源清单和缺失输入的明确记录；没有图像数字化数据或
+派生似然输入。见 `lsnd/README.md`。
+
+MiniBooNE 使用 `miniboone/shared/raw/official_nue2020_combined` 保存合作组直接发布的
+纯文本输入、似然面和覆盖率轮廓；来源与逐文件SHA-256见该目录的清单。

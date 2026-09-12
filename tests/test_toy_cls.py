@@ -45,6 +45,30 @@ def test_fixed_test_statistic_freezes_both_hypotheses() -> None:
     assert statistic(dataset) == pytest.approx(0.25 - 1.0)
 
 
+def test_fixed_test_statistic_batch_matches_scalar_quadratic_forms() -> None:
+    null = GaussianHypothesis(
+        np.array([0.0, 1.0]), np.array([[2.0, 0.3], [0.3, 1.5]])
+    )
+    tested = GaussianHypothesis(
+        np.array([0.4, 0.7]), np.array([[1.7, 0.2], [0.2, 1.2]])
+    )
+    statistic = prepare_fixed_test_statistic((null,), (tested,))
+    draws = (np.array([[0.2, 0.8], [1.1, -0.3], [-0.5, 2.0]]),)
+    scalar = np.array([statistic((row,)) for row in draws[0]])
+    np.testing.assert_allclose(statistic.evaluate_batch(draws), scalar, rtol=2e-14, atol=2e-14)
+
+
+def test_batched_fixed_toy_keeps_seeded_results_across_batch_sizes() -> None:
+    null = GaussianHypothesis(np.array([0.0, 0.5]), np.array([[1.0, 0.2], [0.2, 2.0]]))
+    tested = GaussianHypothesis(np.array([0.3, 0.8]), np.array([[1.2, 0.1], [0.1, 1.6]]))
+    statistic = prepare_fixed_test_statistic((null,), (tested,))
+    first = toy_cls(0.0, (null,), (tested,), statistic, number_of_toys=53, seed=31, batch_size=53)
+    second = toy_cls(0.0, (null,), (tested,), statistic, number_of_toys=53, seed=31, batch_size=7)
+    np.testing.assert_allclose(first.test_statistics_under_3nu, second.test_statistics_under_3nu, rtol=2e-14, atol=2e-14)
+    np.testing.assert_allclose(first.test_statistics_under_4nu, second.test_statistics_under_4nu, rtol=2e-14, atol=2e-14)
+    assert first.cls == second.cls
+
+
 def test_toy_batch_size_does_not_change_multiple_component_random_streams() -> None:
     null = (
         GaussianHypothesis(np.array([0.0]), np.array([[1.0]])),

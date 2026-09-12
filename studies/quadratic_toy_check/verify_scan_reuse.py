@@ -14,7 +14,7 @@ from scipy.linalg import cholesky
 ROOT=Path(__file__).resolve().parents[2]
 sys.path[:0]=[str(ROOT/"src"),str(ROOT)]
 from studies.quadratic_toy_check.run import _build_analysis
-from sterile_fit.adapter import _hypothesis_pairs
+from sterile_fit.experiments.microboone.adapter import _hypothesis_pairs
 from sterile_fit.core.three_plus_one import ThreePlusOneParameters
 from sterile_fit.core.calibration import _draw_gaussian_toys,prepare_fixed_hypothesis_chi2
 from sterile_fit.scan import _profile_toy_at_scan_point,_stable_point_seed

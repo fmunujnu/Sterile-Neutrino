@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(ROOT / "src"), str(ROOT)]
 from studies.quadratic_toy_check.quadratic import from_hypotheses
 from studies.three_plus_one_toy_distribution_fit.run import _build_analysis
-from sterile_fit.adapter import _hypothesis_pairs
+from sterile_fit.experiments.microboone.adapter import _hypothesis_pairs
 from sterile_fit.core.calibration import _draw_gaussian_toys, prepare_fixed_hypothesis_chi2
 from sterile_fit.core.profile_three_plus_one import profile_s14_s24_at_fixed_sin2_2theta_mue, profile_s14_s24_at_fixed_sin2_2theta_ee
 from sterile_fit.core.three_plus_one import ThreePlusOneParameters

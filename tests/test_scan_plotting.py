@@ -2,7 +2,13 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from sterile_fit.scan import _adaptive_toy_candidate_mask, _log_cell_edges
+from sterile_fit.scan import (
+    _adaptive_toy_candidate_mask,
+    _load_precalibration_cache,
+    _log_cell_edges,
+    _ordered_thread_map,
+    _write_precalibration_cache,
+)
 
 
 def test_log_cell_edges_use_geometric_midpoints() -> None:
@@ -23,7 +29,7 @@ def test_adaptive_toy_mask_selects_wide_band_and_neighbours_per_mass_row() -> No
     table = pd.DataFrame({
         "fixed_delta_m2_41_eV2": [1.0] * 5 + [2.0] * 5,
         "fixed_sin2_2theta_mue": [1e-4, 1e-3, 1e-2, 1e-1, 1.0] * 2,
-        "cls_quadratic": [1.0, 0.5, 0.2, 0.04, 0.001] + [0.8] * 5,
+        "cls_gaussian": [1.0, 0.5, 0.2, 0.04, 0.001] + [0.8] * 5,
     })
     selected = _adaptive_toy_candidate_mask(
         table,
@@ -39,7 +45,7 @@ def test_adaptive_toy_mask_requires_band_to_bracket_threshold() -> None:
     table = pd.DataFrame({
         "fixed_delta_m2_41_eV2": [1.0, 1.0],
         "fixed_sin2_2theta_mue": [0.01, 0.1],
-        "cls_quadratic": [0.2, 0.01],
+        "cls_gaussian": [0.2, 0.01],
     })
     with pytest.raises(ValueError, match="must bracket 0.05"):
         _adaptive_toy_candidate_mask(
@@ -49,3 +55,24 @@ def test_adaptive_toy_mask_requires_band_to_bracket_threshold() -> None:
             upper_analytic_cls=0.3,
             neighbour_padding=1,
         )
+
+
+def test_precalibration_cache_round_trip_and_checksum(tmp_path) -> None:
+    table = pd.DataFrame({"chi2": [1.25], "cls_gaussian": [0.04]})
+    directory = _write_precalibration_cache(tmp_path, "abc", {"mode": "test"}, table)
+    loaded, loaded_directory = _load_precalibration_cache(tmp_path, "abc")
+    pd.testing.assert_frame_equal(loaded, table)
+    assert loaded_directory == directory
+
+    (directory / "profile_and_gaussian.csv").write_text(
+        "chi2,cls_gaussian\n9,9\n", encoding="utf-8"
+    )
+    with pytest.raises(RuntimeError, match="checksum failed"):
+        _load_precalibration_cache(tmp_path, "abc")
+
+
+def test_ordered_thread_map_is_identical_to_serial_order() -> None:
+    items = tuple(range(20))
+    serial = _ordered_thread_map(lambda value: value * value, items, 1)
+    parallel = _ordered_thread_map(lambda value: value * value, items, 3)
+    assert parallel == serial

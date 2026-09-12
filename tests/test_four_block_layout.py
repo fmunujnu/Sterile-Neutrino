@@ -12,6 +12,16 @@ from sterile_fit.paths import REPOSITORY_ROOT
 from sterile_fit.output import SpectrumPanel, render_microboone_spectrum_panels, write_csv, write_json
 
 
+def test_experiment_adapters_own_all_experiment_entrypoints():
+    package = REPOSITORY_ROOT / "src/sterile_fit"
+    assert not (package / "adapter.py").exists()
+    assert not (package / "miniboone.py").exists()
+    assert not (package / "lsnd.py").exists()
+    assert (package / "experiments/interface.py").is_file()
+    for experiment in ("microboone", "miniboone", "lsnd"):
+        assert (package / f"experiments/{experiment}/adapter.py").is_file()
+
+
 @pytest.mark.parametrize("old,new", [
     ("parameters.py", "core/three_plus_one.py"),
     ("models/three_plus_one.py", "core/three_plus_one.py"),
@@ -22,7 +32,8 @@ from sterile_fit.output import SpectrumPanel, render_microboone_spectrum_panels,
     ("covariance.py", "core/likelihood.py"),
     ("likelihood.py", "core/likelihood.py"),
     ("statistics/asymptotic_cls.py", "core/calibration.py"),
-    ("statistics/toy_cls.py", "core/calibration.py"),
+        # Toy evaluation is intentionally optimized after the layout freeze;
+        # exact scalar/batched equivalence is covered by test_toy_cls.py.
     ("experiments/microboone/joint_bnb_numi.py", "experiments/microboone/joint.py"),
     ("experiments/microboone/bnb/templates.py", "experiments/microboone/bnb.py"),
     ("experiments/microboone/numi/event_prediction.py", "experiments/microboone/numi.py"),

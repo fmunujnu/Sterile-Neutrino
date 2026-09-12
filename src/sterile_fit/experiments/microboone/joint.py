@@ -72,6 +72,16 @@ class _ShortBaselineResponseProjector:
         )
 
 
+class _PredictorProjector:
+    """Expose an experiment predictor through the joint projector contract."""
+
+    def __init__(self, predictor: object) -> None:
+        self.predictor = predictor
+
+    def predict(self, parameters: ThreePlusOneParameters) -> NDArray[np.float64]:
+        return np.asarray(self.predictor.predict_total_counts(parameters), dtype=float)
+
+
 def joint_bnb_numi_published_indices() -> tuple[int, ...]:
     """Return BNB then NuMI bins in the joint prediction-vector order."""
     return (*bnb_four_channel_indices(), *numi_four_channel_published_indices())
@@ -87,7 +97,7 @@ class JointMicrobooneBnbNumiWorkflow:
     systematic_covariance: NDArray[np.float64]
     bnb_numi_cross_covariance: NDArray[np.float64]
     bnb_projector: _ShortBaselineResponseProjector
-    numi_projector: _ShortBaselineResponseProjector
+    numi_projector: object
 
     def predict_total_counts(self, parameters: ThreePlusOneParameters) -> NDArray[np.float64]:
         return np.concatenate((self.bnb_projector.predict(parameters), self.numi_projector.predict(parameters)))
@@ -126,8 +136,12 @@ def build_joint_microboone_bnb_numi_workflow(
         bnb_projector=_ShortBaselineResponseProjector(
             bnb.predictor.templates, bnb.predictor.baseline_km
         ),
-        numi_projector=_ShortBaselineResponseProjector(
-            numi.predictor.kernel, numi.predictor.baseline_km
+        numi_projector=(
+            _ShortBaselineResponseProjector(
+                numi.predictor.kernel, numi.predictor.baseline_km
+            )
+            if hasattr(numi.predictor, "baseline_km")
+            else _PredictorProjector(numi.predictor)
         ),
     )
 

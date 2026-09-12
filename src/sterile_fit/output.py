@@ -49,7 +49,7 @@ def result_directory(source, model, product):
         begin_output_batch()
     source = {"microboone_bnb_four_channel_only": "microboone_bnb",
               "microboone_bnb_numi_joint_diagnostic": "microboone_bnb_numi_joint"}.get(source, source)
-    product = product.replace("appearance-profile", "fig3a").replace("electron-disappearance-profile", "fig3b")
+    product = product.replace("electron-disappearance-profile", "fig3b").replace("appearance-profile", "fig3a")
     batch = REPOSITORY_ROOT / "outputs" / _path_label(source) / _path_label(model) / _batch_name
     target = batch / _path_label(product)
     _batch_directories.add(target)
@@ -397,12 +397,12 @@ def plot_three_plus_one_scan(result_table, output_directory, arguments, analysis
         )
         axis.legend(
             handles=[Line2D([0], [0], color="tab:red", linewidth=2.0, label=(
-                r"95% $CL_s$ (fixed-hypothesis Toy MC)"
+                r"95% $CL_s$ (fixed-point Toy MC)"
                 if arguments.cls_calibration == "toy"
                 else (
-                    r"95% $CL_s$ (adaptive quadratic form + Toy MC)"
+                    r"95% $CL_s$ (adaptive quadratic form + fixed-point Toy MC)"
                     if arguments.cls_calibration == "adaptive-toy"
-                    else r"95% $CL_s$ (quadratic-form inversion)"
+                    else r"95% $CL_s$ (Gaussian approximation)"
                 )
             ))],
             loc="best",
@@ -422,9 +422,9 @@ def plot_three_plus_one_scan(result_table, output_directory, arguments, analysis
         else analysis.analysis_name.replace("_", " ")
     )
     calibration_title = {
-        "toy": "fixed-hypothesis Toy-MC",
-        "adaptive-toy": "adaptive quadratic form + fixed-hypothesis Toy-MC",
-        "analytic": "profiled quadratic-form inversion",
+        "toy": "fixed-point Toy-MC",
+        "adaptive-toy": "adaptive Gaussian approximation + fixed-point Toy-MC",
+        "analytic": "profiled Gaussian approximation",
     }[arguments.cls_calibration]
     axis.set_title(rf"$3+1$ {analysis_label}: {calibration_title} $CL_s$")
     figure.colorbar(colour, ax=axis, label=r"$CL_s$")
@@ -465,6 +465,300 @@ def plot_one_plus_three_plus_one_scan(table: pd.DataFrame, output: Path) -> None
     colorbar = figure.colorbar(image, ax=axis)
     colorbar.set_label(r"$CL_s$")
     figure.savefig(output, dpi=180)
+    plt.close(figure)
+
+
+def render_miniboone_parameter_space(
+    result_table: pd.DataFrame,
+    official_contours: dict[str, np.ndarray],
+    output_path: Path,
+    *,
+    official_surface: bool,
+) -> None:
+    """Render one MiniBooNE surface and overlay untouched released contours."""
+    value_column = "-2ln(L)" if official_surface else "negative_2_log_likelihood"
+    surface = result_table.pivot(index="dm2", columns="sintheta", values=value_column)
+    amplitudes = surface.columns.to_numpy(dtype=float)
+    masses = surface.index.to_numpy(dtype=float)
+    delta = surface.to_numpy(dtype=float)
+    delta -= np.nanmin(delta)
+    figure, axis = plt.subplots(figsize=(7.5, 5.8), constrained_layout=True)
+    colour = axis.pcolormesh(
+        _extended_plot_log_cell_edges(amplitudes),
+        _extended_plot_log_cell_edges(masses),
+        delta,
+        shading="flat",
+        cmap="viridis_r",
+    )
+    styles = {
+        "1sigma": ("white", "--", r"Official $1\sigma$"),
+        "90percent": ("tab:red", "-", "Official 90% C.L."),
+        "99percent": ("tab:orange", "-.", "Official 99% C.L."),
+        "3sigma": ("cyan", ":", r"Official $3\sigma$"),
+    }
+    handles = []
+    for name, points in official_contours.items():
+        color, linestyle, label = styles[name]
+        # A contour file contains all x crossings at each sampled y, not one
+        # ordered polyline. Connecting consecutive rows creates false chords
+        # between disconnected branches, so display the released points.
+        axis.scatter(points[:, 0], points[:, 1], color=color, s=2.0, linewidths=0)
+        handles.append(Line2D([0], [0], marker=".", markersize=5, color=color,
+                              linestyle="none", label=label))
+    best = result_table.loc[result_table[value_column].idxmin()]
+    axis.scatter(best["sintheta"], best["dm2"], marker="*", s=90, color="black", zorder=5)
+    handles.append(Line2D([0], [0], marker="*", color="black", linestyle="none", label="Grid minimum"))
+    axis.set_xscale("log")
+    axis.set_yscale("log")
+    axis.set_xlim(amplitudes.min(), amplitudes.max())
+    axis.set_ylim(masses.min(), masses.max())
+    axis.set_xlabel(r"$\sin^2(2\theta_{\mu e})$")
+    axis.set_ylabel(r"$\Delta m^2\;[\mathrm{eV}^2]$")
+    axis.set_title("MiniBooNE released likelihood" if official_surface else "MiniBooNE locally reconstructed Gaussian likelihood")
+    figure.colorbar(colour, ax=axis, label=(r"$\Delta[-2\ln L]$" if official_surface else r"$\Delta(\chi^2+\ln|M|)$"))
+    axis.legend(handles=handles, fontsize=8, loc="best")
+    figure.savefig(output_path, dpi=180, bbox_inches="tight")
+    plt.close(figure)
+
+
+def render_lsnd_rate_parameter_space(
+    result_table: pd.DataFrame, output_path: Path, *, heatmap: bool = True
+) -> None:
+    """Render the public-input LSND DAR rate likelihood, without official curves."""
+    pivot = result_table.pivot(
+        index="delta_m2_41_eV2",
+        columns="sin2_2theta_mue",
+        values="negative_2_log_likelihood",
+    )
+    amplitudes = pivot.columns.to_numpy(dtype=float)
+    masses = pivot.index.to_numpy(dtype=float)
+    delta = pivot.to_numpy(dtype=float)
+    delta -= np.nanmin(delta)
+    figure, axis = plt.subplots(figsize=(7.5, 5.8), constrained_layout=True)
+    colour = None
+    if heatmap:
+        colour = axis.pcolormesh(
+            _extended_plot_log_cell_edges(amplitudes),
+            _extended_plot_log_cell_edges(masses),
+            delta,
+            shading="flat",
+            cmap="viridis_r",
+            vmin=0.0,
+            vmax=12.0,
+        )
+    contours = axis.contour(
+        amplitudes,
+        masses,
+        delta,
+        levels=[4.605, 9.210],
+        colors=["tab:cyan", "tab:orange"],
+        linewidths=[2.0, 2.0],
+    )
+    axis.clabel(contours, fmt={4.605: "90% constant slice", 9.210: "99% constant slice"})
+    axis.scatter(
+        0.003, 1.2, marker="*", s=100, color="black", zorder=5,
+        label="Published four-variable best fit",
+    )
+    axis.set_xscale("log")
+    axis.set_yscale("log")
+    axis.set_xlim(amplitudes.min(), amplitudes.max())
+    axis.set_ylim(masses.min(), masses.max())
+    axis.set_xlabel(r"$\sin^2(2\theta_{\mu e})$")
+    axis.set_ylabel(r"$\Delta m^2_{41}\;[\mathrm{eV}^2]$")
+    axis.set_title("LSND DAR public-input rate likelihood (3+1)")
+    if colour is not None:
+        figure.colorbar(colour, ax=axis, label=r"$\Delta[-2\ln L_{\rm rate}]$")
+    axis.legend(fontsize=8, loc="best")
+    figure.savefig(output_path, dpi=180, bbox_inches="tight")
+    plt.close(figure)
+
+
+def render_miniboone_line_comparison(
+    local_result: pd.DataFrame,
+    official_contours: dict[str, np.ndarray],
+    output_path: Path,
+) -> None:
+    """Compare local fixed-threshold likelihood contours with released coverage contours."""
+    pivot = local_result.pivot(
+        index="dm2", columns="sintheta", values="negative_2_log_likelihood"
+    )
+    amplitudes = pivot.columns.to_numpy(dtype=float)
+    masses = pivot.index.to_numpy(dtype=float)
+    delta = pivot.to_numpy(dtype=float)
+    delta -= np.nanmin(delta)
+    levels = {
+        "1sigma": 2.30,
+        "90percent": 4.605,
+        "99percent": 9.210,
+        "3sigma": 11.83,
+    }
+    local_colors = {
+        "1sigma": "tab:blue",
+        "90percent": "tab:red",
+        "99percent": "tab:orange",
+        "3sigma": "tab:green",
+    }
+    official_colors = {
+        "1sigma": "tab:cyan",
+        "90percent": "tab:pink",
+        "99percent": "tab:purple",
+        "3sigma": "tab:brown",
+    }
+    labels = {
+        "1sigma": r"$1\sigma$",
+        "90percent": "90% C.L.",
+        "99percent": "99% C.L.",
+        "3sigma": r"$3\sigma$",
+    }
+    figure, axis = plt.subplots(figsize=(7.5, 5.8), constrained_layout=True)
+    handles = []
+    for name in levels:
+        local_color = local_colors[name]
+        official_color = official_colors[name]
+        axis.contour(
+            amplitudes,
+            masses,
+            delta,
+            levels=[levels[name]],
+            colors=[local_color],
+            linewidths=1.8,
+        )
+        points = official_contours[name]
+        axis.scatter(points[:, 0], points[:, 1], color=official_color, s=3.0, linewidths=0)
+        handles.extend([
+            Line2D([0], [0], color=local_color, linewidth=1.8,
+                   label=f"Local fixed threshold: {labels[name]}"),
+            Line2D([0], [0], marker=".", markersize=5, color=official_color,
+                   linestyle="none", label=f"Official coverage: {labels[name]}"),
+        ])
+    axis.set_xscale("log")
+    axis.set_yscale("log")
+    axis.set_xlim(amplitudes.min(), amplitudes.max())
+    axis.set_ylim(masses.min(), masses.max())
+    axis.set_xlabel(r"$\sin^2(2\theta_{\mu e})$")
+    axis.set_ylabel(r"$\Delta m^2_{41}\;[\mathrm{eV}^2]$")
+    axis.set_title("MiniBooNE: local likelihood contours vs official coverage")
+    axis.legend(handles=handles, fontsize=7, ncol=2, loc="best")
+    axis.grid(False)
+    figure.savefig(output_path, dpi=180, bbox_inches="tight")
+    plt.close(figure)
+
+
+def render_miniboone_three_way_comparison(
+    local_result: pd.DataFrame,
+    official_result: pd.DataFrame,
+    official_contours: dict[str, np.ndarray],
+    output_path: Path,
+    *,
+    heatmap: bool,
+) -> None:
+    """Compare local NLL, released NLL, and released coverage at equal CL labels.
+
+    Method is encoded by colour. Confidence level is encoded by line style for
+    gridded likelihood contours and by marker shape for the collaboration's
+    released point contours, which are deliberately not joined across branches.
+    """
+    local = local_result.pivot(
+        index="dm2", columns="sintheta", values="negative_2_log_likelihood"
+    )
+    official = official_result.pivot(
+        index="dm2", columns="sintheta", values="-2ln(L)"
+    )
+    if not (
+        np.array_equal(local.index.to_numpy(), official.index.to_numpy())
+        and np.array_equal(local.columns.to_numpy(), official.columns.to_numpy())
+    ):
+        raise ValueError("local and official MiniBooNE surfaces must share one grid")
+    amplitudes = local.columns.to_numpy(dtype=float)
+    masses = local.index.to_numpy(dtype=float)
+    local_delta = local.to_numpy(dtype=float)
+    local_delta -= np.nanmin(local_delta)
+    official_delta = official.to_numpy(dtype=float)
+    official_delta -= np.nanmin(official_delta)
+
+    levels = {
+        "90percent": (4.605, "90% C.L.", "-", "o"),
+        "99percent": (9.210, "99% C.L.", "--", "^"),
+    }
+    method_colours = {
+        "local": "#0068B5",
+        "official_likelihood": "#D55E00",
+        "official_coverage": "#009E73",
+    }
+    figure, axis = plt.subplots(figsize=(7.5, 5.8), constrained_layout=True)
+    if heatmap:
+        colour = axis.pcolormesh(
+            _extended_plot_log_cell_edges(amplitudes),
+            _extended_plot_log_cell_edges(masses),
+            local_delta,
+            shading="flat",
+            cmap="Greys_r",
+            vmin=0.0,
+            vmax=12.0,
+            alpha=0.72,
+        )
+        figure.colorbar(
+            colour, ax=axis, label=r"Local $\Delta(\chi^2+\ln|V|)$"
+        )
+
+    handles: list[Line2D] = []
+    for name, (threshold, label, linestyle, marker) in levels.items():
+        # Draw the released likelihood as a wide underlay and the local result
+        # as a narrow overlay. Both remain visible even where they coincide.
+        axis.contour(
+            amplitudes,
+            masses,
+            official_delta,
+            levels=[threshold],
+            colors=[method_colours["official_likelihood"]],
+            linestyles=[linestyle],
+            linewidths=3.8,
+            zorder=2,
+        )
+        axis.contour(
+            amplitudes,
+            masses,
+            local_delta,
+            levels=[threshold],
+            colors=[method_colours["local"]],
+            linestyles=[linestyle],
+            linewidths=1.5,
+            zorder=3,
+        )
+        points = np.asarray(official_contours[name], dtype=float)
+        axis.scatter(
+            points[:, 0],
+            points[:, 1],
+            color=method_colours["official_coverage"],
+            marker=marker,
+            s=7.0,
+            linewidths=0.0,
+            alpha=0.9,
+            zorder=4,
+        )
+        handles.extend((
+            Line2D([0], [0], color=method_colours["local"], linestyle=linestyle,
+                   linewidth=1.5, label=f"Local Gaussian NLL — {label}"),
+            Line2D([0], [0], color=method_colours["official_likelihood"],
+                   linestyle=linestyle, linewidth=3.8,
+                   label=f"Official likelihood slice — {label}"),
+            Line2D([0], [0], color=method_colours["official_coverage"],
+                   marker=marker, markersize=4, linestyle="none",
+                   label=f"Official frequentist contour — {label}"),
+        ))
+
+    axis.set_xscale("log")
+    axis.set_yscale("log")
+    axis.set_xlim(amplitudes.min(), amplitudes.max())
+    axis.set_ylim(masses.min(), masses.max())
+    axis.set_xlabel(r"$\sin^2(2\theta_{\mu e})$")
+    axis.set_ylabel(r"$\Delta m^2_{41}\;[\mathrm{eV}^2]$")
+    axis.set_title(
+        "MiniBooNE: local reconstruction, official likelihood, and coverage"
+    )
+    axis.grid(False)
+    axis.legend(handles=handles, fontsize=7.3, ncol=2, loc="best")
+    figure.savefig(output_path, dpi=180, bbox_inches="tight")
     plt.close(figure)
 
 
@@ -746,7 +1040,7 @@ COMPARISON_SCANS = (
         "fixed_sin2_2theta_mue",
         "cls_adaptive_hybrid",
         r"$\sin^2(2\theta_{\mu e})$",
-        r"Fig. 3a: adaptive fixed-hypothesis Toy-MC $CL_s$",
+        r"Fig. 3a: adaptive fixed-point Toy-MC $CL_s$",
     ),
     (
         "fig3b_analytic",
@@ -760,7 +1054,7 @@ COMPARISON_SCANS = (
         "fixed_sin2_2theta_ee",
         "cls_adaptive_hybrid",
         r"$\sin^2(2\theta_{ee})$",
-        r"Fig. 3b: adaptive fixed-hypothesis Toy-MC $CL_s$",
+        r"Fig. 3b: adaptive fixed-point Toy-MC $CL_s$",
     ),
 )
 
@@ -937,7 +1231,7 @@ def plot_completed_scan_contours() -> None:
                 Line2D([0], [0], color="tab:red", linewidth=2.1,
                        label=r"Analytic (no Toy MC)"),
                 Line2D([0], [0], color="tab:green", linewidth=2.1,
-                       label=r"Adaptive fixed-hypothesis Toy MC"),
+                       label=r"Adaptive fixed-point Toy MC"),
             ],
             loc="best",
         )

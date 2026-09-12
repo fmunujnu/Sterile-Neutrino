@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from sterile_fit.adapter import ChiSquareContribution, CombinedChiSquare
-from sterile_fit.adapter import load_analysis_selection
+from sterile_fit.experiments.microboone.adapter import ChiSquareContribution, CombinedChiSquare
+from sterile_fit.experiments.microboone.adapter import load_analysis_selection
 from sterile_fit.paths import REPOSITORY_ROOT
 
 

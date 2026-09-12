@@ -12,7 +12,7 @@ from scipy.stats import norm, kstest, beta
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
-from sterile_fit.adapter import load_analysis_selection, build_three_plus_one_analysis, _hypothesis_pairs
+from sterile_fit.experiments.microboone.adapter import load_analysis_selection, build_three_plus_one_analysis, _hypothesis_pairs
 from sterile_fit.core.three_plus_one import ThreePlusOneParameters
 from sterile_fit.core.calibration import asymptotic_cls, _draw_gaussian_toys, prepare_fixed_hypothesis_chi2
 from sterile_fit.scan import _stable_point_seed

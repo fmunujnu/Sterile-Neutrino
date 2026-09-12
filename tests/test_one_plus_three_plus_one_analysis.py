@@ -1,8 +1,8 @@
 import numpy as np
 
-from sterile_fit.adapter import build_three_plus_one_analysis
-from sterile_fit.adapter import load_analysis_selection
-from sterile_fit.adapter import build_one_plus_three_plus_one_analysis
+from sterile_fit.experiments.microboone.adapter import build_three_plus_one_analysis
+from sterile_fit.experiments.microboone.adapter import load_analysis_selection
+from sterile_fit.experiments.microboone.adapter import build_one_plus_three_plus_one_analysis
 from sterile_fit.core.one_plus_three_plus_one import OnePlusThreePlusOneParameters
 from sterile_fit.core.three_plus_one import ThreePlusOneParameters
 from sterile_fit.paths import REPOSITORY_ROOT

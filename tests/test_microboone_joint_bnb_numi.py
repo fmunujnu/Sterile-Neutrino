@@ -1,8 +1,8 @@
 import numpy as np
 from pathlib import Path
 
-from sterile_fit.adapter import build_three_plus_one_analysis
-from sterile_fit.adapter import load_analysis_selection
+from sterile_fit.experiments.microboone.adapter import build_three_plus_one_analysis
+from sterile_fit.experiments.microboone.adapter import load_analysis_selection
 from sterile_fit.experiments.microboone.public_data import bnb_four_channel_indices
 from sterile_fit.experiments.microboone.joint import joint_bnb_numi_published_indices
 from sterile_fit.experiments.microboone.public_data import numi_four_channel_published_indices
@@ -33,6 +33,7 @@ def test_joint_analysis_registry_builds_one_cross_covariance_contribution() -> N
     analysis = build_three_plus_one_analysis(selection, repository_root=root)
     assert len(analysis.experiments) == 1
     assert analysis.experiments[0].metadata["covariance_includes_bnb_numi_cross_blocks"] is True
+    assert analysis.experiments[0].metadata["numi_baseline_treatment"].startswith("energy-")
     reference = ThreePlusOneParameters(1.2, 0.0, 0.0)
     np.testing.assert_allclose(
         analysis.objective.chi2(reference), 152.21602635970766, rtol=1e-10

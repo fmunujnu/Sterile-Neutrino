@@ -52,7 +52,7 @@ def polish_gaussian_boundaries(frame, boundary_rows, source):
     from studies.quadratic_toy_check.run import _build_analysis
     from sterile_fit.core.three_plus_one import ThreePlusOneParameters
     from studies.quadratic_toy_check.run import profile_observation
-    from sterile_fit.adapter import _hypothesis_pairs
+    from sterile_fit.experiments.microboone.adapter import _hypothesis_pairs
     from sterile_fit.core.calibration import asymptotic_cls
     config = ROOT/"configs/analyses/microboone_bnb_numi.yaml"
     source_metadata = json.loads((source/"metadata.json").read_text(encoding="utf-8"))

@@ -2,7 +2,7 @@
 from __future__ import annotations
 from sterile_fit.output import result_directory
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import json
 from pathlib import Path
 import numpy as np
@@ -29,6 +29,116 @@ PROCESS_FIELDS = (
     "beam_nuebar_to_numubar_cc_response_counts",
     "beam_numubar_to_numubar_cc_response_counts",
 )
+
+
+@dataclass(frozen=True, slots=True)
+class NumiEnergyBaselineDistribution:
+    """Flux-weighted NuMI conditional baseline masses q(L-bin | E, flavour).
+
+    This adapter changes only the baseline average applied to the existing
+    empirical event kernel.  Its energy marginal is deliberately discarded so
+    that flux already absorbed by that kernel is not multiplied a second time.
+    """
+
+    energy_low_GeV: NDArray[np.float64]
+    energy_high_GeV: NDArray[np.float64]
+    baseline_center_km: NDArray[np.float64]
+    probability_mass_by_flavour: dict[str, NDArray[np.float64]]
+    _phase_average_cache: dict[tuple[float, bytes], dict[str, NDArray[np.float64]]] = field(
+        default_factory=dict, init=False, repr=False, compare=False
+    )
+
+    @classmethod
+    def from_csv(cls, path: Path) -> "NumiEnergyBaselineDistribution":
+        table = pd.read_csv(path)
+        required = {
+            "flavour", "energy_low_GeV", "energy_high_GeV",
+            "baseline_low_km", "baseline_high_km",
+            "psi_per_POT_per_cm2_per_100MeV_per_km",
+        }
+        if not required.issubset(table.columns):
+            raise ValueError(f"NuMI E-L table has missing columns: {required - set(table.columns)}")
+        energy_bins = table[["energy_low_GeV", "energy_high_GeV"]].drop_duplicates().sort_values("energy_low_GeV")
+        baseline_bins = table[["baseline_low_km", "baseline_high_km"]].drop_duplicates().sort_values("baseline_low_km")
+        energy_low = energy_bins["energy_low_GeV"].to_numpy(float)
+        energy_high = energy_bins["energy_high_GeV"].to_numpy(float)
+        baseline_center = 0.5 * (
+            baseline_bins["baseline_low_km"].to_numpy(float)
+            + baseline_bins["baseline_high_km"].to_numpy(float)
+        )
+        delta_l = (
+            baseline_bins["baseline_high_km"].to_numpy(float)
+            - baseline_bins["baseline_low_km"].to_numpy(float)
+        )
+        masses: dict[str, NDArray[np.float64]] = {}
+        for flavour in ("nue", "numu", "nuebar", "numubar"):
+            subset = table.loc[table["flavour"] == flavour]
+            grid = subset.pivot(
+                index="energy_low_GeV", columns="baseline_low_km",
+                values="psi_per_POT_per_cm2_per_100MeV_per_km",
+            ).sort_index().sort_index(axis=1).to_numpy(float)
+            if grid.shape != (energy_low.size, baseline_center.size):
+                raise ValueError(f"NuMI E-L grid for {flavour} has shape {grid.shape}")
+            mass = grid * delta_l[None, :]
+            row_sum = mass.sum(axis=1, keepdims=True)
+            if np.any(row_sum <= 0.0) or np.any(mass < 0.0):
+                raise ValueError(f"NuMI E-L grid for {flavour} has an invalid marginal")
+            masses[flavour] = mass / row_sum
+        return cls(energy_low, energy_high, baseline_center, masses)
+
+    def average_probability(
+        self, model: VacuumOscillationModel, initial: int, final: int,
+        energy_GeV: NDArray[np.float64], *, antineutrino: bool = False,
+    ) -> NDArray[np.float64]:
+        flavour = {(0, False): "nue", (1, False): "numu", (0, True): "nuebar", (1, True): "numubar"}[
+            (initial, antineutrino)
+        ]
+        energy = np.asarray(energy_GeV, dtype=float)
+        indices = np.searchsorted(self.energy_high_GeV, energy, side="left")
+        if np.any(indices < 0) or np.any(indices >= self.energy_low_GeV.size):
+            raise ValueError("NuMI kernel energy lies outside the E-L distribution")
+        mass = self.probability_mass_by_flavour[flavour][indices]
+        # The shared model contract intentionally accepts a scalar baseline.
+        # Evaluate its unchanged implementation at each L-bin centre here.
+        values = np.column_stack([
+            model.probability(
+                initial, final, energy, float(baseline), antineutrino=antineutrino
+            )
+            for baseline in self.baseline_center_km
+        ])
+        return np.sum(mass * values, axis=1)
+
+    def three_plus_one_probabilities(
+        self, parameters: ThreePlusOneParameters, energy_GeV: NDArray[np.float64]
+    ) -> dict[str, NDArray[np.float64]]:
+        """Return the exact 3+1 SBL probabilities after the q(L|E) average."""
+        energy = np.asarray(energy_GeV, dtype=float)
+        indices = np.searchsorted(self.energy_high_GeV, energy, side="left")
+        key = (float(parameters.delta_m2_41_eV2), energy.tobytes())
+        phase_averages = self._phase_average_cache.get(key)
+        if phase_averages is None:
+            phase = (
+                1.267 * parameters.delta_m2_41_eV2
+                * self.baseline_center_km[None, :] / energy[:, None]
+            )
+            sine_squared = np.sin(phase) ** 2
+            phase_averages = {
+                flavour: np.sum(self.probability_mass_by_flavour[flavour][indices] * sine_squared, axis=1)
+                for flavour in ("nue", "numu", "nuebar", "numubar")
+            }
+            self._phase_average_cache[key] = phase_averages
+        ue4_sq = parameters.sin2_theta14
+        umu4_sq = (1.0 - parameters.sin2_theta14) * parameters.sin2_theta24
+        return {
+            "nue_to_nue": 1.0 - 4.0 * ue4_sq * (1.0 - ue4_sq) * phase_averages["nue"],
+            "numu_to_nue": 4.0 * umu4_sq * ue4_sq * phase_averages["numu"],
+            "nue_to_numu": 4.0 * ue4_sq * umu4_sq * phase_averages["nue"],
+            "numu_to_numu": 1.0 - 4.0 * umu4_sq * (1.0 - umu4_sq) * phase_averages["numu"],
+            "nuebar_to_nuebar": 1.0 - 4.0 * ue4_sq * (1.0 - ue4_sq) * phase_averages["nuebar"],
+            "numubar_to_nuebar": 4.0 * umu4_sq * ue4_sq * phase_averages["numubar"],
+            "nuebar_to_numubar": 4.0 * ue4_sq * umu4_sq * phase_averages["nuebar"],
+            "numubar_to_numubar": 1.0 - 4.0 * umu4_sq * (1.0 - umu4_sq) * phase_averages["numubar"],
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -198,6 +308,61 @@ def build_diagnostic_numi_workflow(
     inputs = load_numi_four_channel_inputs()
     kernel = NumiFourChannelEmpiricalKernel.from_directory(kernel_directory)
     predictor = NumiFourChannelPredictor(kernel, baseline_km)
+    predictor.validate_reference(reference_parameters, inputs.published_total_prediction_counts)
+    return DiagnosticNumiWorkflow(
+        inputs=inputs,
+        predictor=predictor,
+        likelihood=PredictionScaledGaussianLikelihood(
+            inputs.observed_counts,
+            inputs.published_total_prediction_counts,
+            inputs.systematic_covariance,
+        ),
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class NumiEnergyBaselinePredictor:
+    """NuMI-only 3+1 predictor using the optional public-dk2nu L average."""
+
+    kernel: NumiFourChannelEmpiricalKernel
+    distribution: NumiEnergyBaselineDistribution
+
+    def predict_total_counts(self, parameters: ThreePlusOneParameters) -> NDArray[np.float64]:
+        probabilities = self.distribution.three_plus_one_probabilities(
+            parameters, self.kernel.true_energy_GeV
+        )
+        components = {
+            name.removeprefix("beam_").removesuffix("_cc_response_counts"):
+            np.asarray(getattr(self.kernel, name))
+            @ probabilities[name.removeprefix("beam_").removesuffix("_cc_response_counts")]
+            for name in PROCESS_FIELDS
+        }
+        prediction = self.kernel.fixed_published_background_counts + sum(components.values())
+        if not np.all(np.isfinite(prediction)) or np.any(prediction < 0.0):
+            raise FloatingPointError("NuMI E-L averaged event prediction contains invalid counts")
+        return prediction
+
+    def validate_reference(
+        self, parameters: ThreePlusOneParameters,
+        published_total_prediction_counts: NDArray[np.float64],
+    ) -> None:
+        predicted = self.predict_total_counts(parameters)
+        if not np.allclose(predicted, published_total_prediction_counts, rtol=1e-10, atol=1e-10):
+            largest = int(np.argmax(np.abs(predicted - published_total_prediction_counts)))
+            raise ValueError(f"NuMI E-L reference closure failed at local bin {largest}")
+
+
+def build_energy_baseline_numi_workflow(
+    kernel_directory: Path,
+    reference_parameters: ThreePlusOneParameters,
+    energy_baseline_path: Path,
+) -> DiagnosticNumiWorkflow:
+    """Build the opt-in E-L diagnostic without changing the fixed-L workflow."""
+    inputs = load_numi_four_channel_inputs()
+    kernel = NumiFourChannelEmpiricalKernel.from_directory(kernel_directory)
+    predictor = NumiEnergyBaselinePredictor(
+        kernel, NumiEnergyBaselineDistribution.from_csv(energy_baseline_path)
+    )
     predictor.validate_reference(reference_parameters, inputs.published_total_prediction_counts)
     return DiagnosticNumiWorkflow(
         inputs=inputs,

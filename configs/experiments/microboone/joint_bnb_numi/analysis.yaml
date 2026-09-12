@@ -8,4 +8,4 @@ component_configs:
   bnb: "configs/experiments/microboone/bnb/analysis.yaml"
   numi: "configs/experiments/microboone/numi/analysis.yaml"
 released_covariance: "data/experiments/microboone/shared/raw/hepdata_microboone_2025/HEPData-ins3088922-v1-14_channel_covariance_matrix.csv"
-warning: "NuMI still borrows the BNB Reco prior, omits 3--5 GeV response support and freezes aggregate Background; the joint chi2 is not a collaboration-exact likelihood."
+warning: "NuMI uses the registered public-dk2nu conditional L|E average, but still borrows the BNB Reco prior, omits 3--5 GeV response support and freezes aggregate Background; the joint chi2 is not a collaboration-exact likelihood."

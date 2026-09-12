@@ -10,7 +10,7 @@ import numpy as np
 from numpy.typing import NDArray
 from sterile_fit.experiments.microboone.bnb import StrictBnbWorkflow, build_strict_bnb_workflow
 from sterile_fit.experiments.microboone.joint import build_joint_microboone_bnb_numi_workflow
-from sterile_fit.experiments.microboone.numi import build_diagnostic_numi_workflow
+from sterile_fit.experiments.microboone.numi import build_energy_baseline_numi_workflow
 from sterile_fit.core.three_plus_one import ThreePlusOneParameters
 from sterile_fit.core.likelihood import solve_quadratic_form
 from sterile_fit.experiments.microboone.bnb import BnbFourChannelOscillationTemplates
@@ -195,6 +195,10 @@ class BuiltExperiment:
     def chi2(self, parameters: ThreePlusOneParameters) -> float:
         return float(self.evaluate(parameters))
 
+    def negative_two_log_likelihood(self, parameters: ThreePlusOneParameters) -> float:
+        """Shared adapter name; identical to the existing Gaussian chi-square."""
+        return self.chi2(parameters)
+
 
 @dataclass(frozen=True, slots=True)
 class BuiltAnalysis:
@@ -297,8 +301,13 @@ def build_three_plus_one_analysis(
                 numi_document["diagnostic_four_channel_events"]["kernel_directory"],
                 label="NuMI kernel",
             )
-            numi_workflow = build_diagnostic_numi_workflow(
-                numi_kernel, numi_reference, float(numi_document["baseline_km"])
+            energy_baseline_distribution = _repository_path(
+                repository_root,
+                numi_document["energy_baseline_distribution"]["path"],
+                label="NuMI energy-baseline distribution",
+            )
+            numi_workflow = build_energy_baseline_numi_workflow(
+                numi_kernel, numi_reference, energy_baseline_distribution
             )
             released_covariance = _repository_path(
                 repository_root, joint_document["released_covariance"], label="joint covariance"
@@ -322,6 +331,8 @@ def build_three_plus_one_analysis(
                     "bnb_kernel": str(bnb_kernel),
                     "bnb_reference_covariance": str(bnb_covariance),
                     "numi_kernel": str(numi_kernel),
+                    "numi_energy_baseline_distribution": str(energy_baseline_distribution),
+                    "numi_baseline_treatment": "energy- and flavour-dependent public-dk2nu conditional baseline average",
                     "statistical_treatment": "current-prediction Pearson diagonal",
                     "covariance_parameter_dependence": "prediction-scaled full 208x208 fractional systematics",
                 },
@@ -364,6 +375,12 @@ class BuiltOnePlusThreePlusOneExperiment:
                 covariance,
             )
         )
+
+    def negative_two_log_likelihood(
+        self, parameters: OnePlusThreePlusOneParameters
+    ) -> float:
+        """Shared adapter name; identical to the existing Gaussian chi-square."""
+        return self.chi2(parameters)
 
 
 @dataclass(frozen=True, slots=True)
