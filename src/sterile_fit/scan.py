@@ -265,9 +265,12 @@ def _profile_toy_at_scan_point(
     *,
     mode: str,
     tested_parameters: ThreePlusOneParameters,
+    prepared_hypothesis=None,
 ):
     """Repeat the observed-data profile definition for one pseudo-experiment."""
-    objective = _objective_for_toy(analysis, toy_dataset)
+    objective = _objective_for_toy(
+        analysis, toy_dataset, prepared_hypothesis=prepared_hypothesis
+    )
     if mode == "appearance-profile":
         return profile_s14_s24_at_fixed_sin2_2theta_mue(
             objective,

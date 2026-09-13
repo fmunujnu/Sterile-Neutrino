@@ -17,7 +17,10 @@ sys.path[:0] = [str(ROOT), str(ROOT / "src")]
 
 from studies.microboone_profile_toy_block_shift.run import _profile_observed  # noqa: E402
 from studies.three_plus_one_toy_distribution_fit.run import _build_analysis  # noqa: E402
-from sterile_fit.experiments.microboone.adapter import _hypothesis_pairs  # noqa: E402
+from sterile_fit.experiments.microboone.adapter import (  # noqa: E402
+    _hypothesis_pairs,
+    make_toy_profile_hypothesis_cache,
+)
 from sterile_fit.core.calibration import _draw_gaussian_toys, prepare_fixed_hypothesis_chi2  # noqa: E402
 from sterile_fit.core.three_plus_one import ThreePlusOneParameters  # noqa: E402
 from sterile_fit.scan import _profile_toy_at_scan_point  # noqa: E402
@@ -52,6 +55,7 @@ def evaluate(payload: tuple[str, str, float, float, int, int]) -> tuple[dict, li
     pairs = _hypothesis_pairs(_ANALYSIS, _NULL, fitted.parameters)
     hypotheses = [tuple(pair[index] for pair in pairs) for index in (0, 1)]
     null_chi2 = prepare_fixed_hypothesis_chi2(hypotheses[0])
+    prepared_hypothesis = make_toy_profile_hypothesis_cache(_ANALYSIS, maxsize=256)
     hypothesis_seeds = np.random.SeedSequence(seed).spawn(2)
     values = []
     toy_rows = []
@@ -70,7 +74,11 @@ def evaluate(payload: tuple[str, str, float, float, int, int]) -> tuple[dict, li
             dataset = tuple(draw[toy_index] for draw in draws)
             chi3 = null_chi2(dataset)
             toy_fit = _profile_toy_at_scan_point(
-                _ANALYSIS, dataset, mode=mode, tested_parameters=fitted.parameters
+                _ANALYSIS,
+                dataset,
+                mode=mode,
+                tested_parameters=fitted.parameters,
+                prepared_hypothesis=prepared_hypothesis,
             )
             statistics[toy_index] = toy_fit.chi2 - chi3
             toy_rows.append({"figure": figure, "mass": mass, "amplitude": amplitude,

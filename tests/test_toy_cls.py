@@ -1,7 +1,13 @@
 import numpy as np
 import pytest
+from types import SimpleNamespace
 
 from sterile_fit.core.calibration import GaussianHypothesis, fixed_hypothesis_chi2, prepare_fixed_hypothesis_chi2, prepare_fixed_test_statistic, toy_cls
+from sterile_fit.core.three_plus_one import ThreePlusOneParameters
+from sterile_fit.experiments.microboone.adapter import (
+    _objective_for_toy,
+    make_toy_profile_hypothesis_cache,
+)
 
 
 def test_toy_cls_is_seed_reproducible_and_evaluates_every_toy() -> None:
@@ -123,3 +129,35 @@ def test_fixed_hypothesis_chi2_sums_registered_contributions() -> None:
     assert value == pytest.approx(10.0)
     prepared = prepare_fixed_hypothesis_chi2(hypotheses)
     assert prepared((np.array([3.0]), np.array([5.0]))) == pytest.approx(value)
+
+
+def test_profile_toy_cache_is_exact_and_reuses_only_parameter_work() -> None:
+    prediction_calls = 0
+
+    def predict(parameters):
+        nonlocal prediction_calls
+        prediction_calls += 1
+        return np.array([1.0 + parameters.sin2_theta14, 2.0 + parameters.sin2_theta24])
+
+    experiment = SimpleNamespace(
+        predict_counts=predict,
+        covariance_for_prediction=lambda prediction: np.array(
+            [[2.0 + prediction[0], 0.2], [0.2, 3.0 + prediction[1]]]
+        ),
+    )
+    analysis = SimpleNamespace(experiments=(experiment,))
+    parameters = ThreePlusOneParameters(1.2, 0.1, 0.2)
+    first_data = (np.array([0.8, 2.4]),)
+    second_data = (np.array([1.5, 1.7]),)
+    expected = (
+        _objective_for_toy(analysis, first_data)(parameters),
+        _objective_for_toy(analysis, second_data)(parameters),
+    )
+    prediction_calls = 0
+    cache = make_toy_profile_hypothesis_cache(analysis, maxsize=8)
+    actual = (
+        _objective_for_toy(analysis, first_data, prepared_hypothesis=cache)(parameters),
+        _objective_for_toy(analysis, second_data, prepared_hypothesis=cache)(parameters),
+    )
+    assert actual == expected
+    assert prediction_calls == 1

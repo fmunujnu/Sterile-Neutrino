@@ -8,6 +8,7 @@ from typing import Callable, Generic, Mapping, TypeVar
 from typing import Callable, Mapping
 import numpy as np
 from numpy.typing import NDArray
+from scipy.linalg import cholesky, solve_triangular
 from sterile_fit.experiments.microboone.bnb import StrictBnbWorkflow, build_strict_bnb_workflow
 from sterile_fit.experiments.microboone.joint import build_joint_microboone_bnb_numi_workflow
 from sterile_fit.experiments.microboone.numi import build_energy_baseline_numi_workflow
@@ -539,22 +540,53 @@ def _hypothesis_pairs(analysis, null_parameters, tested_parameters):
     return pairs
 
 
-def _objective_for_toy(analysis, toy_dataset):
+def _objective_for_toy(analysis, toy_dataset, *, prepared_hypothesis=None):
     """Build the same prediction-scaled chi2 with pseudo-data replacing data."""
     if len(toy_dataset) != len(analysis.experiments):
         raise ValueError("toy dataset does not match the selected analysis")
 
     def objective(parameters: ThreePlusOneParameters) -> float:
         total = 0.0
-        for experiment, observation in zip(
+        for experiment_index, (experiment, observation) in enumerate(zip(
             analysis.experiments, toy_dataset, strict=True
-        ):
-            prediction = experiment.predict_counts(parameters)
-            covariance = experiment.covariance_for_prediction(prediction)
-            total += solve_quadratic_form(observation - prediction, covariance)
+        )):
+            if prepared_hypothesis is None:
+                prediction = experiment.predict_counts(parameters)
+                covariance = experiment.covariance_for_prediction(prediction)
+                total += solve_quadratic_form(observation - prediction, covariance)
+            else:
+                prediction, lower = prepared_hypothesis(experiment_index, parameters)
+                residual = np.asarray(observation, dtype=float) - prediction
+                whitened = solve_triangular(
+                    lower, residual, lower=True, check_finite=False
+                )
+                total += float(whitened @ whitened)
         return float(total)
 
     return objective
+
+
+def make_toy_profile_hypothesis_cache(analysis, *, maxsize: int = 256):
+    """Cache parameter-only prediction/factor work shared by Toy profiles.
+
+    The cached quantities do not depend on the pseudo-observation.  Every Toy
+    still evaluates its own residual and follows the unchanged profile search.
+    A bounded cache prevents per-worker memory growth on full scans.
+    """
+    from functools import lru_cache
+
+    if maxsize < 1:
+        raise ValueError("Toy profile cache maxsize must be positive")
+
+    @lru_cache(maxsize=maxsize)
+    def prepare(experiment_index, parameters):
+        experiment = analysis.experiments[experiment_index]
+        prediction = np.asarray(experiment.predict_counts(parameters), dtype=float)
+        covariance = experiment.covariance_for_prediction(prediction)
+        lower = cholesky(covariance, lower=True, check_finite=False)
+        return prediction, lower
+
+    return prepare
 
 
 def extended_hypothesis_pairs(analysis, null_parameters, tested_parameters):
