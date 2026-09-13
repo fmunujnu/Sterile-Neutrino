@@ -14,3 +14,7 @@ appended immediately, so completed points survive an interrupted worker.
 One hundred Toys per hypothesis give only about five expected samples in a
 0.05 tail and are therefore a qualitative cross-check, not a stable exclusion
 calibration.
+
+For a downloaded server batch, `render_shards.py --batch-directory <batch>`
+validates and merges all 4514 point shards, then writes the merged CSV, a
+heatmap, a contour-only figure and binomial counting diagnostics.
