@@ -27,6 +27,14 @@ from sterile_fit.output import result_directory, write_json
 
 DEFAULT_TOYS_PER_POINT = 10_000
 DEFAULT_BATCH_SIZE = 100
+REPRESENTATIVE_TARGETS = (
+    (0.5, 0.05),
+    (0.2, 0.08),
+    (0.05, 0.15),
+    (0.02, 0.3),
+    (0.008, 0.45),
+    (0.02, 0.5),
+)
 
 
 def _arguments() -> argparse.Namespace:
@@ -38,6 +46,12 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=20260913)
     parser.add_argument("--start-point", type=int, default=0)
     parser.add_argument("--stop-point", type=int)
+    parser.add_argument(
+        "--selection",
+        choices=("full", "representative-90"),
+        default="full",
+        help="Use the full grid or six points spanning the official 90%% contour.",
+    )
     parser.add_argument("--output-directory", type=Path)
     arguments = parser.parse_args()
     if arguments.toys < 1 or arguments.batch_size < 1:
@@ -96,6 +110,27 @@ def _append_row(path: Path, row: dict[str, object]) -> None:
         stream.flush()
 
 
+def _representative_indices(
+    masses: np.ndarray, amplitudes: np.ndarray
+) -> list[int]:
+    contour = np.loadtxt(RAW / "cont_fake_oct19_contNunubar_90.txt")
+    indices = []
+    for target_amplitude, target_mass in REPRESENTATIVE_TARGETS:
+        distance = np.sum(
+            (np.log10(contour) - np.log10([target_amplitude, target_mass])) ** 2,
+            axis=1,
+        )
+        amplitude, mass = contour[np.argmin(distance)]
+        mass_index = int(np.argmin(np.abs(np.log(masses) - np.log(mass))))
+        amplitude_index = int(
+            np.argmin(np.abs(np.log(amplitudes) - np.log(amplitude)))
+        )
+        index = mass_index * len(amplitudes) + amplitude_index
+        if index not in indices:
+            indices.append(index)
+    return indices
+
+
 def main() -> None:
     arguments = _arguments()
     data = load_release()
@@ -104,8 +139,16 @@ def main() -> None:
     amplitudes = np.sort(official.sintheta.unique())
     total_points = len(masses) * len(amplitudes)
     stop_point = total_points if arguments.stop_point is None else arguments.stop_point
-    if not arguments.start_point < stop_point <= total_points:
-        raise ValueError(f"require 0 <= start-point < stop-point <= {total_points}")
+    if arguments.selection == "full":
+        if not arguments.start_point < stop_point <= total_points:
+            raise ValueError(f"require 0 <= start-point < stop-point <= {total_points}")
+        tested_indices = list(range(arguments.start_point, stop_point))
+    else:
+        if arguments.start_point != 0 or arguments.stop_point is not None:
+            raise ValueError(
+                "start/stop-point cannot be combined with representative-90"
+            )
+        tested_indices = _representative_indices(masses, amplitudes)
 
     output = arguments.output_directory or result_directory(
         "studies_miniboone", "three_plus_one", "full_grid_reprofile_toy"
@@ -123,7 +166,7 @@ def main() -> None:
     observed_best_index = int(np.argmin(observed_nll))
     completed = 0
 
-    for tested_index in range(arguments.start_point, stop_point):
+    for selection_index, tested_index in enumerate(tested_indices):
         mass_index, amplitude_index = divmod(tested_index, len(amplitudes))
         mass = float(masses[mass_index])
         amplitude = float(amplitudes[amplitude_index])
@@ -171,9 +214,10 @@ def main() -> None:
         _append_row(summary_path, row)
         completed += 1
         elapsed = time.perf_counter() - started
-        remaining = elapsed / completed * (stop_point - tested_index - 1)
+        remaining = elapsed / completed * (len(tested_indices) - selection_index - 1)
         print(
-            f"point {tested_index + 1}/{stop_point}; elapsed={elapsed:.1f}s; "
+            f"selected point {selection_index + 1}/{len(tested_indices)} "
+            f"(grid index {tested_index}); elapsed={elapsed:.1f}s; "
             f"remaining~{remaining:.1f}s",
             flush=True,
         )
@@ -182,7 +226,8 @@ def main() -> None:
         "scientific_status": "non_official_reprofile_toy_study",
         "toys_per_tested_parameter_point": arguments.toys,
         "default_toys_per_point": DEFAULT_TOYS_PER_POINT,
-        "tested_point_range": [arguments.start_point, stop_point],
+        "selection": arguments.selection,
+        "tested_point_indices": tested_indices,
         "complete_grid_points": total_points,
         "grid_shape": [len(masses), len(amplitudes)],
         "observed_profile": {

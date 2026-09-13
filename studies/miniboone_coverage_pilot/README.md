@@ -14,3 +14,7 @@
 内部的完整频率学派校准。
 
 本次仅完成代码修改、未执行 Toy 计算；运行时间和最终覆盖边界尚未验证。
+
+服务器完整运行由 `scripts/server/miniboone_reprofile_toy.sh` 把36100个参数点
+划分给独立进程。每个进程固定BLAS单线程，逐点CSV由统一状态命令汇总；调度层
+不改变Toy生成、NLL或每份Toy的完整网格reprofile。
