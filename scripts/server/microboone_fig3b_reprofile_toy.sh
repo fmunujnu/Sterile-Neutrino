@@ -65,7 +65,7 @@ GIT_COMMIT=$(git -C "$repository_root" rev-parse HEAD)
 EOF
     for ((worker=0; worker<workers; worker++)); do
         start=$((worker*total_grid_points/workers)); stop=$(((worker+1)*total_grid_points/workers)); worker_name=$(printf 'worker_%02d' "$worker")
-        nohup "$0" internal-worker "$batch" "$worker_name" "$start" "$stop" "$toys" > "$batch_directory/logs/$worker_name.log" 2>&1 < /dev/null &
+        nohup bash "$0" internal-worker "$batch" "$worker_name" "$start" "$stop" "$toys" > "$batch_directory/logs/$worker_name.log" 2>&1 < /dev/null &
         echo $! > "$batch_directory/pids/$worker_name.pid"
     done
     echo "Started $workers workers for $total_grid_points points x $toys Toys per hypothesis."
