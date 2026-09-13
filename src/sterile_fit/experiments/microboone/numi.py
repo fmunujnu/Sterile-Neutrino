@@ -322,7 +322,7 @@ def build_diagnostic_numi_workflow(
 
 @dataclass(frozen=True, slots=True)
 class NumiEnergyBaselinePredictor:
-    """NuMI-only 3+1 predictor using the optional public-dk2nu L average."""
+    """Active NuMI 3+1 predictor using the registered public-dk2nu L average."""
 
     kernel: NumiFourChannelEmpiricalKernel
     distribution: NumiEnergyBaselineDistribution
@@ -357,7 +357,7 @@ def build_energy_baseline_numi_workflow(
     reference_parameters: ThreePlusOneParameters,
     energy_baseline_path: Path,
 ) -> DiagnosticNumiWorkflow:
-    """Build the opt-in E-L diagnostic without changing the fixed-L workflow."""
+    """Build the registered E-L-averaged NuMI public-data approximation."""
     inputs = load_numi_four_channel_inputs()
     kernel = NumiFourChannelEmpiricalKernel.from_directory(kernel_directory)
     predictor = NumiEnergyBaselinePredictor(

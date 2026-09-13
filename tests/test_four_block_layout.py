@@ -70,6 +70,15 @@ def test_entrypoint_forwards_calibration_and_preserves_overrides(monkeypatch):
     assert "electron-disappearance-profile" in captured
 
 
+def test_fig3b_registered_mass_range_reaches_40_ev2(monkeypatch):
+    import sterile_fit.scan as scan
+    captured = []
+    monkeypatch.setattr(scan, "scan_three_plus_one", lambda: captured.extend(sys.argv[1:]))
+    _entrypoint().main(["scan", "--preset", "fig3b", "--calibration", "analytic"])
+    position = captured.index("--delta-m2-max-eV2")
+    assert captured[position + 1] == "40"
+
+
 def test_entrypoint_rejects_removed_prefit(monkeypatch):
     with pytest.raises(SystemExit) as exc:
         _entrypoint().main(["scan", "--mode", "prefit"])

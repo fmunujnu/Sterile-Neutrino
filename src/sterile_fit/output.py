@@ -651,6 +651,7 @@ def render_miniboone_three_way_comparison(
     output_path: Path,
     *,
     heatmap: bool,
+    toy_result: pd.DataFrame | None = None,
 ) -> None:
     """Compare local NLL, released NLL, and released coverage at equal CL labels.
 
@@ -665,12 +666,12 @@ def render_miniboone_three_way_comparison(
         index="dm2", columns="sintheta", values="-2ln(L)"
     )
     if not (
-        np.array_equal(local.index.to_numpy(), official.index.to_numpy())
-        and np.array_equal(local.columns.to_numpy(), official.columns.to_numpy())
+        np.allclose(local.index.to_numpy(), official.index.to_numpy(), rtol=1e-12, atol=0.0)
+        and np.allclose(local.columns.to_numpy(), official.columns.to_numpy(), rtol=1e-12, atol=0.0)
     ):
         raise ValueError("local and official MiniBooNE surfaces must share one grid")
-    amplitudes = local.columns.to_numpy(dtype=float)
-    masses = local.index.to_numpy(dtype=float)
+    amplitudes = official.columns.to_numpy(dtype=float)
+    masses = official.index.to_numpy(dtype=float)
     local_delta = local.to_numpy(dtype=float)
     local_delta -= np.nanmin(local_delta)
     official_delta = official.to_numpy(dtype=float)
@@ -684,6 +685,7 @@ def render_miniboone_three_way_comparison(
         "local": "#0068B5",
         "official_likelihood": "#D55E00",
         "official_coverage": "#009E73",
+        "local_toy": "#CC79A7",
     }
     figure, axis = plt.subplots(figsize=(7.5, 5.8), constrained_layout=True)
     if heatmap:
@@ -736,6 +738,33 @@ def render_miniboone_three_way_comparison(
             alpha=0.9,
             zorder=4,
         )
+        if toy_result is not None:
+            critical_column = {
+                "90percent": "toy_90_critical",
+                "99percent": "toy_99_critical",
+            }[name]
+            toy_margin = toy_result.pivot(
+                index="delta_m2_eV2",
+                columns="sin2_2theta_mue",
+                values="observed_profiled_delta_nll",
+            ) - toy_result.pivot(
+                index="delta_m2_eV2",
+                columns="sin2_2theta_mue",
+                values=critical_column,
+            )
+            toy_margin = toy_margin.reindex(index=masses, columns=amplitudes)
+            if toy_margin.isna().any().any():
+                raise ValueError("Toy calibration must cover the complete MiniBooNE grid")
+            axis.contour(
+                amplitudes,
+                masses,
+                toy_margin.to_numpy(dtype=float),
+                levels=[0.0],
+                colors=[method_colours["local_toy"]],
+                linestyles=[linestyle],
+                linewidths=1.2,
+                zorder=5,
+            )
         handles.extend((
             Line2D([0], [0], color=method_colours["local"], linestyle=linestyle,
                    linewidth=1.5, label=f"Local Gaussian NLL — {label}"),
@@ -746,6 +775,12 @@ def render_miniboone_three_way_comparison(
                    marker=marker, markersize=4, linestyle="none",
                    label=f"Official frequentist contour — {label}"),
         ))
+        if toy_result is not None:
+            handles.append(Line2D(
+                [0], [0], color=method_colours["local_toy"],
+                linestyle=linestyle, linewidth=1.2,
+                label=f"Local 100-Toy reprofile — {label}",
+            ))
 
     axis.set_xscale("log")
     axis.set_yscale("log")
@@ -754,7 +789,8 @@ def render_miniboone_three_way_comparison(
     axis.set_xlabel(r"$\sin^2(2\theta_{\mu e})$")
     axis.set_ylabel(r"$\Delta m^2_{41}\;[\mathrm{eV}^2]$")
     axis.set_title(
-        "MiniBooNE: local reconstruction, official likelihood, and coverage"
+        "MiniBooNE: local reconstruction, official likelihood, coverage"
+        + (", and reprofile Toys" if toy_result is not None else "")
     )
     axis.grid(False)
     axis.legend(handles=handles, fontsize=7.3, ncol=2, loc="best")

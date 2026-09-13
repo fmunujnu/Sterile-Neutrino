@@ -12,4 +12,4 @@ arguments:
   - "--delta-m2-min-eV2"
   - "1e-1"
   - "--delta-m2-max-eV2"
-  - "14"
+  - "40"

@@ -298,3 +298,13 @@ Windows环境下系统临时目录曾有权限问题，因此本轮使用独立w
 - 241x241的3+1扫描中，论文最佳点附近相对最低点的`Delta chi2`为Fig.16的0.996和Fig.24的1.224，均通过预设`<2.3`内部相容检查。两套90%轮廓在低质量差主带接近；高质量差起伏对分箱敏感，不判作可靠物理细节。
 - 实际运行完成；`tests/test_lsnd.py`在工作区独立临时目录下10 passed，研究目录`git diff --check`通过。默认pytest缓存目录仍因既有Windows权限锁产生非物理警告。
 - 输出：`outputs/studies/lsnd_public_spectrum_reweighting/latest/`，包含两份提取CSV、两份重绘谱、两份扫描CSV、各自参数空间图、轮廓对比图和机器可读验证metadata。
+
+# 2026-09-13 NuMI psi活动登记与Fig.3b范围
+
+- 确认活动BNB+NuMI适配器已经固定读取`public_dk2nu_energy_baseline/psi_exposure_weighted_four_flavours.csv`；本次只统一配置、注释和文档状态，没有改变既有预测数值。
+- NuMI组件明确登记为`active_joint_approximation`，不注册成独立NuMI实验。psi的能量边缘不重复乘入已经吸收flux的经验事件kernel。
+- Fig.3b具名preset的质量平方差上界由14改为40 eV2，因此新运行会实际计算到40，而不是只扩展空坐标轴。
+- 定向测试11 passed，`python -B run.py check`全部通过。一次较宽的测试集合另暴露既有冻结AST一致性失败及Windows pytest临时目录权限问题；二者与本次psi配置变更无关，未冒充全套通过。
+- 10 m基线bin中心采样与bin内均匀解析平均的诊断差异：在测试混合`s14=s24=0.05`下，14 eV2时逐bin最大约0.81%，40 eV2时约1.73%。这表明扩展高质量区需要基线离散化收敛检查；该均匀bin比较未替换活动算法。
+- 实际运行Fig.3b无Toy Gaussian近似：质量轴按原0.1--14 eV2的对数步长密度由61点扩展为74点，振幅轴保持61点，共4514个逐点profile；全部`chi2`和`cls_gaussian`为有限值。结果位于`outputs/microboone_bnb_numi_joint/three_plus_one/fig3b_psi_formal_gaussian_40ev2_74x61/scan_fig3b_analytic/`。14--40 eV2的快速条纹尚未通过psi基线bin细化收敛检验。
+- 新增独立研究运行器`studies/microboone_fig3b_full_reprofile_toy/run.py`及服务器分片器：74x61每点在3nu和4nu下各生成指定数量的Toy，每份Toy重复固定图坐标下的完整`s24`/两支`s14` profile。1点、每假设2 Toy烟雾测试通过并已清理临时输出；100 Toy配置仅用于定性交叉验证。

@@ -9,6 +9,7 @@ from sterile_fit.experiments.microboone.numi import (
 from sterile_fit.experiments.microboone.public_data import NUMI_FOUR_CHANNELS, numi_four_channel_published_indices
 from sterile_fit.experiments.microboone.public_data import PublishedNumiFourChannelInputs, load_numi_four_channel_inputs
 import pytest
+import yaml
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -84,3 +85,14 @@ def test_cached_three_plus_one_baseline_average_matches_direct_core_evaluation()
         rtol=2e-14,
         atol=2e-14,
     )
+
+
+def test_registered_numi_configuration_uses_energy_baseline_input() -> None:
+    configuration = yaml.safe_load(
+        (ROOT / "configs/experiments/microboone/numi/analysis.yaml").read_text(encoding="utf-8")
+    )
+    assert configuration["availability"] == "active_joint_approximation"
+    assert configuration["include_in_joint_analysis"] is True
+    assert configuration["include_as_standalone_experiment"] is False
+    path = ROOT / configuration["energy_baseline_distribution"]["path"]
+    assert path.is_file()

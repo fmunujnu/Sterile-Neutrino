@@ -1,8 +1,10 @@
-# NuMI energy--baseline kernel pilot
+# NuMI energy--baseline registered-input generator
 
-This isolated study builds an auditable approximation to
-`psi(E_nu, L, flavour)` without changing the active MicroBooNE prediction,
-oscillation, likelihood, or scan code.
+This study is the auditable generator for the registered
+`psi(E_nu, L, flavour)` approximation.  The active BNB+NuMI analysis reads the
+reviewed snapshot under
+`data/experiments/microboone/numi/derived/public_dk2nu_energy_baseline/`;
+it never downloads or rebuilds this input during a scan.
 
 The conditional baseline shape is taken from publicly downloadable NuMI
 `dk2nu` events.  Each event supplies the parent decay vertex and a precomputed
@@ -19,7 +21,7 @@ The available public sample is a Geant4 9.2, medium-energy, negative-200-kA
 (RHC) NuMI production.  It is not the Geant4 4.10.4 + updated PPFX production
 used for the final Nature analysis.  RHC conditional shapes are read directly;
 FHC shapes use the charge-conjugate RHC flavour as an explicit proxy.  The
-result is therefore a geometry-informed sensitivity model, not an official
+result is therefore an active geometry-informed approximation, not an official
 MicroBooNE input.
 
 Run after installing `uproot` and `awkward` from `requirements.txt`:
@@ -44,4 +46,3 @@ Sources:
   https://lss.fnal.gov/archive/thesis/2000/fermilab-thesis-2021-20.pdf
 - MicroBooNE NuMI flux update:
   https://microboone.fnal.gov/wp-content/uploads/MICROBOONE-NOTE-1129-PUB.pdf
-

@@ -87,7 +87,7 @@ coverage contour. See `data/experiments/lsnd/`.
 # 原 Fig3a 联合分析坐标和范围，Gaussian分布近似
 python run.py scan --preset fig3a --calibration analytic
 
-# 原 Fig3b 联合分析坐标和范围
+# Fig3b联合分析；质量平方差范围0.1--40 eV^2
 python run.py scan --preset fig3b --calibration analytic
 
 # Toy：每个假设每点 100 份，保守使用单进程
@@ -159,7 +159,8 @@ python run.py prepare --kind numi-kernel
 ## 当前科学范围
 
 - BNB 四通道、104 bins：公开预测经验锚定。
-- BNB+NuMI：208 bins，保留发布的跨束流协方差；NuMI 对公开dk2nu条件基线分布作能量、味道相关平均，但仍使用借用的 BNB Reco 先验，因此仍是近似分析。
+- BNB+NuMI：208 bins，保留发布的跨束流协方差；NuMI正式读取登记的公开dk2nu条件基线分布并作能量、味道相关平均，但仍使用借用的BNB Reco先验，因此是活动近似分析，不是合作组复现。
+- Fig3b现扫描0.1--40 eV^2；当前psi以10 m基线bin中心评价相位，高质量差区的bin内快速振荡尚未做收敛验证，不能把扩展显示范围等同于新增可靠灵敏度。
 - 单独 NuMI 有输入/预测模块，但没有独立注册的扫描选择。
 - 固定公开 Background、单基线、未知截面/效率由经验 kernel 吸收等限制仍然存在。
 - HEPData 总谱作为零混合锚点的当前声明未在结构迁移中重新裁决。

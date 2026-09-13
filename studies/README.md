@@ -6,7 +6,8 @@
 | 目录 | 用途 |
 |---|---|
 | numi_flux_pdf_extraction | PDF矢量提取、原图重绘、已存数组对照；保留输入来源复现链 |
-| numi_energy_baseline_kernel | 用公开NuMI dk2nu衰变顶点与MicroBooNE射线构造受现有Phi(E)约束的psi(E,L)试验；不接入活动分析 |
+| numi_energy_baseline_kernel | 生成公开NuMI dk2nu约束的psi(E,L)登记输入；活动分析读取data中的固定快照，研究脚本只保留来源复现链 |
+| microboone_fig3b_full_reprofile_toy | 0.1--40 eV2、74x61完整Fig3b网格；每点在3nu/4nu下生成Toy并对每份Toy重新profile的研究校准 |
 | official_grid_profile | 官方大网格的profile/Wilks对照，不是本地CLs |
 | three_plus_one_toy_distribution_fit | 少量点的Toy分布拟合，默认最多两进程 |
 | quadratic_toy_check | 独立固定二次型CF反演，对照相同Toy的固定与profiled T；不替换活动推断 |

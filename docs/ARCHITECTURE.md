@@ -138,7 +138,7 @@ MicroBooNE adapter保留原类型和函数语义，归并选择/组合/注册文
 - 当前协方差不是固定参考总矩阵：保留分数系统误差缩放，再加当前Pearson对角项。
 - 联合分析取完整208x208块，不丢BNB–NuMI交叉块。
 - 官方大型NuMI扫描TXT只供 studies/official_grid_profile，不进入本地CLs扫描。
-- `NumiFourChannelPredictor`只有在调用者显式传入能量—基线CSV时才以逐源味道的条件质量平均振荡概率；现有事件kernel已经包含flux，因此该路径丢弃psi的能量边缘，禁止重复乘flux。
+- 活动联合适配器固定读取NuMI配置登记的能量—基线CSV，并由`NumiEnergyBaselinePredictor`以逐源味道的条件质量平均振荡概率；现有事件kernel已经包含flux，因此该路径只使用q(L|E,flavour)，禁止重复乘psi的能量边缘。
 - MiniBooNE raw发布含11+8+11+8观测bin、两份逐事件全转换样本、60x60分数
   协方差、官方似然面和校准轮廓；未从图片数字化，也未使用MicroBooNE kernel。
 - MiniBooNE扫描的有效振幅用sin²theta14=1/2、sin²theta24=sin²(2theta_mue)
