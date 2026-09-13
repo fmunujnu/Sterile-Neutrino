@@ -3,11 +3,10 @@ set -euo pipefail
 
 repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 virtual_environment="${STERILE_VENV:-$HOME/data/venvs/sterile-py311}"
-output_root="${STERILE_SERVER_OUTPUT_ROOT:-$HOME/data/outputs/microboone_fig3b_reprofile_toy}"
-total_grid_points=4514
+output_root="${STERILE_SERVER_OUTPUT_ROOT:-$HOME/data/outputs/microboone_reprofile_toy}"
 
 usage() {
-    echo "Usage: $0 start BATCH [WORKERS=28] [TOYS=100]"
+    echo "Usage: $0 start BATCH [WORKERS=28] [TOYS=5000] [FIGURES=both]"
     echo "       $0 status BATCH"
     echo "       $0 watch BATCH [SECONDS=10]"
     echo "       $0 stop BATCH"
@@ -48,7 +47,13 @@ batch_status() {
 action=${1:-}
 case "$action" in
 start)
-    batch=${2:-}; workers=${3:-28}; toys=${4:-100}
+    batch=${2:-}; workers=${3:-28}; toys=${4:-5000}; figures=${5:-both}
+    case "$figures" in
+        fig3a) total_grid_points=3721 ;;
+        fig3b) total_grid_points=4514 ;;
+        both) total_grid_points=8235 ;;
+        *) echo "FIGURES must be fig3a, fig3b, or both" >&2; exit 2 ;;
+    esac
     [[ "$batch" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || exit 2
     [[ "$workers" =~ ^[1-9][0-9]*$ ]] && (( workers <= total_grid_points )) || exit 2
     [[ "$toys" =~ ^[1-9][0-9]*$ ]] || exit 2
@@ -59,24 +64,25 @@ start)
 BATCH=$batch
 WORKERS=$workers
 TOYS_PER_HYPOTHESIS=$toys
+FIGURES=$figures
 TOTAL_POINTS=$total_grid_points
 START_EPOCH=$(date +%s)
 GIT_COMMIT=$(git -C "$repository_root" rev-parse HEAD)
 EOF
     for ((worker=0; worker<workers; worker++)); do
         start=$((worker*total_grid_points/workers)); stop=$(((worker+1)*total_grid_points/workers)); worker_name=$(printf 'worker_%02d' "$worker")
-        nohup bash "$0" internal-worker "$batch" "$worker_name" "$start" "$stop" "$toys" > "$batch_directory/logs/$worker_name.log" 2>&1 < /dev/null &
+        nohup bash "$0" internal-worker "$batch" "$worker_name" "$start" "$stop" "$toys" "$figures" > "$batch_directory/logs/$worker_name.log" 2>&1 < /dev/null &
         echo $! > "$batch_directory/pids/$worker_name.pid"
     done
     echo "Started $workers workers for $total_grid_points points x $toys Toys per hypothesis."
     echo "Monitor: bash scripts/server/microboone_fig3b_reprofile_toy.sh watch $batch"
     ;;
 internal-worker)
-    batch=$2; worker_name=$3; start=$4; stop=$5; toys=$6; batch_directory="$output_root/$batch"
+    batch=$2; worker_name=$3; start=$4; stop=$5; toys=$6; figures=$7; batch_directory="$output_root/$batch"
     export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1 MPLBACKEND=Agg
     set +e
     "$virtual_environment/bin/python" -B "$repository_root/studies/microboone_fig3b_full_reprofile_toy/run.py" \
-        --toys "$toys" --start-point "$start" --stop-point "$stop" --output-directory "$batch_directory/shards/$worker_name"
+        --figures "$figures" --toys "$toys" --start-point "$start" --stop-point "$stop" --output-directory "$batch_directory/shards/$worker_name"
     code=$?; set -e
     if (( code == 0 )); then printf '0\n' > "$batch_directory/status/$worker_name.done"; else printf '%d\n' "$code" > "$batch_directory/status/$worker_name.failed"; fi
     exit "$code"
