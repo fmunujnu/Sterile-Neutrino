@@ -11,6 +11,7 @@ src/sterile_fit/
   experiments/interface.py       所有实验面向公共分析层的likelihood/分箱预测接口
   experiments/microboone/
     adapter.py                  MicroBooNE选择、构建、模型接入和Toy假设适配
+    reprofile_toy.py            已完成5000 Toy/假设、逐Toy重新profile结果的校验与活动绘图入口
     public_data.py             通道定义、完整公开谱/协方差读取、两个束流选择
     response.py                原始Reco读取、零列/归一化、26-bin适配与准备
     bnb.py                     BNB kernel、预测、构建、闭合、谱数据组装
@@ -29,6 +30,7 @@ src/sterile_fit/
     one_plus_three_plus_one.py  1+3+1参数与短基线概率
     profile_three_plus_one.py  原3+1约束最小化与扫描坐标
     profile_one_plus_three_plus_one.py  原1+3+1约束最小化
+    profile_specification.py  显式声明每个模型参数是固定值还是带边界profile
     likelihood.py             参考协方差工具、当前协方差和二次型
     calibration.py            Gaussian矩近似与经验Toy CLs；旧二次型反演仅供研究复核
   output.py                   批次/来源路径、调用指纹、共享谱渲染、参数图、轮廓比较、CSV/JSON写入
@@ -36,6 +38,9 @@ src/sterile_fit/
 ```
 
 保留两种模型的不同profile过程，不把它们改造成同一个优化算法。
+两种优化器共享的只有`ProfileSpecification`声明：调用者必须为每个真实模型坐标给出
+固定值或profile边界，二者不能重叠，也不能遗漏。该对象不计算概率、不改变目标函数，
+只消除“参数未写所以被默认profile”的含糊行为；旧Mapping调用仍保留原数值语义。
 合并文件不等于修改数值函数；原参数、浮点运算、缓存、求解、优化和随机序列保持。
 
 ## 调用链
@@ -53,6 +58,10 @@ run.py scan
   -> output.py 保存及绘图
 ```
 
+`run.py scan --model 3+1 --calibration reprofile-toy`是已完成高开销校准的读取入口：
+它校验规范CSV中的图号、网格完整性、Toy数和CLs字段，再由`output.py`统一生成
+Fig.3a/Fig.3b热力图与纯轮廓图；它不经过`scan.py`重新生成Toy，也不改变预测或profile。
+
 scan.py 保留 model-specific 调度分支，避免改变优化顺序、默认种子及边界。
 输出选择通过已有结果列完成，不在输出中重新计算统计量。
 3+1全网格的观测数据profile和广义二次型结果按活动源码、配置、科学输入内容、网格与profile模式生成SHA-256缓存键，保存为可检查CSV和JSON清单。Toy数量、种子、批大小和自适应选择范围不进入此键；它们变化时复用观测数据前置结果并严格重建该点固定假设。缓存读取使用round-trip浮点解析并校验CSV哈希。任何相关输入内容变化都会产生新键，不覆盖旧缓存。
@@ -63,11 +72,15 @@ run.py通过begin_output_batch设置文件归组；output.py统一生成结果�
 不改变物理参数；实际保存路径与历史结果迁移见OUTPUTS.md。比较入口显式接收四个结果目录。
 
 ```text
-run.py miniboone --kind official|scan
+run.py miniboone --kind toy|official|scan|one-plus-three-plus-one
   -> experiments/miniboone/official_2020.py 读取合作组纯文本发布
+  -> toy（默认）: 读取完整190x190网格、每点10000份Toy且每份Toy重新profile的本地校准CSV
   -> official: 不重算，直接保存/绘制官方190x190似然面及覆盖率轮廓
   -> scan: 调用3+1短基线P(mu->e)，按逐事件P*w/N构造两极性信号，合并60维协方差为38维，计算chi2+log|M|
-  -> output.py 统一路径、CSV/JSON和参数空间图
+  -> one-plus-three-plus-one: 调用逐事件Etrue/Ltrue的1+3+1 appearance概率，
+     默认固定dm2_41=-0.9、dm2_51=0.5 eV2和CP=0，扫描两个|Ue_i Umu_i|；
+     appearance不可识别的单独矩阵元分解解析退化；第一阶段只计算chi2，不运行Toy
+  -> output.py 统一路径、CSV/JSON和四路叠加参数空间图
 ```
 
 MiniBooNE尚未注册进MicroBooNE联合adapter。这样先验证该实验自己的公开统计模型，
@@ -101,6 +114,7 @@ run.py spectrum
 | 模型、analytic/toy/adaptive选择 | run.py 命令行 |
 | 3+1网格、Toy数/种子/进程/批次、前置缓存开关/位置 | scan.py 命令行选项；用 --engine-help |
 | 1+3+1质量网格、优化迭代/种群/容差 | 同上，--model 1+3+1 --engine-help |
+| MiniBooNE 1+3+1两个混合乘积范围/精度及固定质量、CP | run.py miniboone --kind one-plus-three-plus-one 后的 --mixing-product-*、--fixed-delta-m2-*、--fixed-cp-phase；质量profile须显式选择 --one-plus-three-plus-one-mode profile-masses |
 | 当前NuMI曝光比例和准备常量 | numi.py 的 FLUX_*、EVENTS_* 常量 |
 | 谱的两个参考点 | bnb.py 的 BNB_PLOT_*；joint.py 的 JOINT_PLOT_*、FIGURE1_* |
 
@@ -133,7 +147,9 @@ MicroBooNE adapter保留原类型和函数语义，归并选择/组合/注册文
 - numi/inputs/flux_components：PDF恢复的8份FHC/RHC分flavor输入。
 - numi/derived/paper_figure3_weighted_flux：4份曝光平均文件；kernel构建明确读未振荡列。
 - numi/derived/public_dk2nu_energy_baseline：公开RHC dk2nu给出的条件基线形状与现有通量边缘结合的登记输入；active BNB+NuMI联合分析读取它并对NuMI振荡概率作能量、味道相关的基线平均，固定基线只作诊断对照。
+- NuMI谱图、3+1/1+3+1联合预测及研究对比默认均读取上述条件基线分布；固定单基线只由显式命名的`fixed_baseline`诊断选项产生，不允许作为未标注默认输入。
 - 各束流 reweighting：真能量、固定背景、八个过程矩阵、metadata和闭合表。
+- shared/derived/reprofile_toy_5000：MicroBooNE联合Fig.3a/3b每点每假设5000 Toy、每份Toy重新profile后的规范校准表；活动入口只读。
 - 扫描直接读kernel；不重新提取PDF或重建kernel。
 - 当前协方差不是固定参考总矩阵：保留分数系统误差缩放，再加当前Pearson对角项。
 - 联合分析取完整208x208块，不丢BNB–NuMI交叉块。
@@ -144,6 +160,11 @@ MicroBooNE adapter保留原类型和函数语义，归并选择/组合/注册文
 - MiniBooNE扫描的有效振幅用sin²theta14=1/2、sin²theta24=sin²(2theta_mue)
   选择appearance简并族中的一个代表，因此核心中的精确4|Ue4|²|Umu4|²等于扫描坐标。
   该选择不影响P(mu->e)，但不得用于声称已重建公开包没有定义的disappearance通道。
+- MiniBooNE的1+3+1入口以`A4=4|Ue4|²|Umu4|²`、`A5=4|Ue5|²|Umu5|²`
+  为公开appearance数据可识别坐标；用最小行范数的对称分解只检查五中微子幺正可嵌入性，
+  不把该分解解释成MiniBooNE对单独矩阵元的测量。活动默认入口直接扫描
+  `|Ue4 Umu4|`与`|Ue5 Umu5|`并固定图示质量差及CP相位；单独矩阵元的分解方向对
+  appearance似然严格平坦。背景和控制样本不作未获公开分解支持的disappearance重加权。
 - LSND只保留论文明确打印的标量与来源清单；其5697事件、四变量PDF、background
   variation、数值曲面/轮廓都不是本地输入。LSND的3+1映射同样选取
   `sin2(theta14)=1/2`、`sin2(theta24)=sin2(2theta_mue)`，仅保证appearance
@@ -155,8 +176,9 @@ MicroBooNE adapter保留原类型和函数语义，归并选择/组合/注册文
 Fig3b固定质量差和4*s14*(1-s14)，检查两支s14并分别profile s24。
 s14-profile保留原固定质量差、s14后优化s24的实现。
 
-1+3+1固定两个质量坐标，profile四个模平方和相位；下态有符号质量差为负，上态为正。
-保留原幺正可嵌入约束和退耦/零混合边界，不额外引入模型参数。
+MicroBooNE的1+3+1质量对入口固定两个质量坐标，profile四个模平方和相位。MiniBooNE
+appearance-only默认入口固定图示质量差和CP=0，扫描两个可识别的混合乘积；下态有符号
+质量差为负，上态为正。两者均保留幺正可嵌入约束，不额外引入模型参数。
 
 两种校准均使用既有T和右尾CLs定义。无Toy使用Gaussian分布近似，不是取消profile；
 有Toy时每个扫描点只profile观测数据一次，并固定得到的3nu/4nu预测与协方差。每点缓存两套Cholesky分解；每批伪数据保持原随机流，通过多右端三角求解一次性计算全部Toy的两个二次型之差。Toy内部禁止重新profile。有限Toy仍有抽样误差，不代表统计精确无误差。
@@ -167,7 +189,7 @@ s14-profile保留原固定质量差、s14后优化s24的实现。
 
 studies 是一次性研究；frozen 是旧实现，二者不混用。
 旧脚本和旧说明完整保留在本次冻结快照；不维持旧导入路径。
-ksquare工具已移到 studies/chi_square_gui。
+已结束的ksquare交互工具和结构迁移脚本位于`frozen/studies/`，不进入活动调用链。
 BNB历史数组提取工具移到 studies/bnb_flux_provenance，日常只读已有flux。
 PDF提取研究保留原件、算法及来源，不成为扫描导入依赖。
 

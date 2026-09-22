@@ -6,10 +6,10 @@
 
 | 层级 | 当前名称及含义 |
 |---|---|
-| source | microboone_bnb、microboone_numi、microboone_bnb_numi_joint；公共输入图为microboone_public |
+| source | microboone_bnb、microboone_numi、microboone_bnb_numi_joint、miniboone_nu_nubar_combined；公共输入图为microboone_public |
 | model | three_plus_one、one_plus_three_plus_one；不涉及模型的输入检查为inputs |
 | batch | 自动UTC微秒时间戳，或用户指定的 --batch 标签 |
-| product | spectra_bnb、spectra_joint、spectra_figure1；scan_fig3a_analytic、scan_fig3b_toy、scan_mass_pair_analytic等；public_plots、flux_plots、prepared_events、contour_comparison |
+| product | spectra_bnb、spectra_joint、spectra_figure1；scan_fig3a_analytic、scan_fig3b_toy、scan_mass_pair_analytic、chi_square_fixed_masses_cp_zero等；质量profile诊断为chi_square_profiled_mixing_plane，旧固定切片诊断为gaussian_nll_fixed_mass_slices；另有public_plots、flux_plots、prepared_events、contour_comparison |
 
 联合结果只存联合来源，不复制到BNB和NuMI两处。其他实验或多实验联合使用自己的来源标签。
 扫描仍原样保存表、图、metadata以及可选toy_distributions，不进一步拆散相互配套的文件。

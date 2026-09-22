@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from hashlib import sha256
 from pathlib import Path
 import yaml
 from typing import Callable, Generic, Mapping, TypeVar
@@ -15,7 +16,7 @@ from sterile_fit.experiments.microboone.numi import build_energy_baseline_numi_w
 from sterile_fit.core.three_plus_one import ThreePlusOneParameters
 from sterile_fit.core.likelihood import solve_quadratic_form
 from sterile_fit.experiments.microboone.bnb import BnbFourChannelOscillationTemplates
-from sterile_fit.experiments.microboone.numi import NumiFourChannelEmpiricalKernel
+from sterile_fit.experiments.microboone.numi import NumiEnergyBaselineDistribution, NumiFourChannelEmpiricalKernel
 from sterile_fit.core.one_plus_three_plus_one import OnePlusThreePlusOneVacuumModel
 from sterile_fit.core.one_plus_three_plus_one import OnePlusThreePlusOneParameters
 from sterile_fit.core.calibration import GaussianHypothesis
@@ -307,6 +308,17 @@ def build_three_plus_one_analysis(
                 numi_document["energy_baseline_distribution"]["path"],
                 label="NuMI energy-baseline distribution",
             )
+            energy_baseline_sha256 = sha256(
+                energy_baseline_distribution.read_bytes()
+            ).hexdigest().upper()
+            expected_energy_baseline_sha256 = str(
+                numi_document["energy_baseline_distribution"]["sha256"]
+            ).upper()
+            if energy_baseline_sha256 != expected_energy_baseline_sha256:
+                raise ValueError(
+                    "NuMI energy-baseline distribution checksum does not match its "
+                    "registered configuration"
+                )
             numi_workflow = build_energy_baseline_numi_workflow(
                 numi_kernel, numi_reference, energy_baseline_distribution
             )
@@ -333,6 +345,10 @@ def build_three_plus_one_analysis(
                     "bnb_reference_covariance": str(bnb_covariance),
                     "numi_kernel": str(numi_kernel),
                     "numi_energy_baseline_distribution": str(energy_baseline_distribution),
+                    "numi_energy_baseline_distribution_sha256": energy_baseline_sha256,
+                    "numi_energy_baseline_method": numi_document[
+                        "energy_baseline_distribution"
+                    ]["method"],
                     "numi_baseline_treatment": "energy- and flavour-dependent public-dk2nu conditional baseline average",
                     "statistical_treatment": "current-prediction Pearson diagonal",
                     "covariance_parameter_dependence": "prediction-scaled full 208x208 fractional systematics",
@@ -460,8 +476,11 @@ def build_one_plus_three_plus_one_analysis(
             numi_kernel = NumiFourChannelEmpiricalKernel.from_directory(
                 Path(str(base.metadata["numi_kernel"]))
             )
-            bnb_baseline_km, numi_baseline_km = _joint_baselines(
+            bnb_baseline_km, _ = _joint_baselines(
                 base.configuration, repository_root
+            )
+            numi_distribution = NumiEnergyBaselineDistribution.from_csv(
+                Path(str(base.metadata["numi_energy_baseline_distribution"]))
             )
 
             def predict_joint(
@@ -469,23 +488,23 @@ def build_one_plus_three_plus_one_analysis(
                 *,
                 active_bnb_templates: BnbFourChannelOscillationTemplates = bnb_templates,
                 active_numi_kernel: NumiFourChannelEmpiricalKernel = numi_kernel,
+                active_numi_distribution: NumiEnergyBaselineDistribution = numi_distribution,
                 active_bnb_baseline_km: float = bnb_baseline_km,
-                active_numi_baseline_km: float = numi_baseline_km,
             ) -> FloatVector:
                 model = OnePlusThreePlusOneVacuumModel(parameters)
                 return np.concatenate((
                     active_bnb_templates.predict_total_counts(
                         model, active_bnb_baseline_km
                     ),
-                    active_numi_kernel.predict_total_counts(
-                        model, active_numi_baseline_km
+                    active_numi_kernel.predict_total_counts_with_baseline_distribution(
+                        model, active_numi_distribution
                     ),
                 ))
 
             predict_counts = predict_joint
             additional_metadata = {
                 "bnb_baseline_km": bnb_baseline_km,
-                "numi_baseline_km": numi_baseline_km,
+                "numi_energy_baseline_distribution": str(base.metadata["numi_energy_baseline_distribution"]),
             }
         else:
             raise ValueError(

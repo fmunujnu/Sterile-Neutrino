@@ -7,6 +7,7 @@ from typing import Callable, Iterable, Mapping
 import numpy as np
 from scipy.optimize import differential_evolution, minimize_scalar
 from sterile_fit.core.three_plus_one import ThreePlusOneParameters
+from sterile_fit.core.profile_specification import ProfileSpecification
 # Numerical fitting in the named 3+1 parameter coordinates.
 
 
@@ -111,7 +112,7 @@ def _validate_fixed_parameters(fixed_parameters: Mapping[str, float]) -> None:
 
 def profile_three_plus_one(
     objective: Objective,
-    fixed_parameters: Mapping[str, float],
+    fixed_parameters: Mapping[str, float] | ProfileSpecification,
     *,
     delta_m2_bounds_eV2: tuple[float, float] = (1e-2, 1e2),
     seed: int = 42,
@@ -123,12 +124,29 @@ def profile_three_plus_one(
     evolution. Δm² is explored in log10 space; mixing variables are explored
     directly as sin²(theta), so their names and bounds remain physical.
     """
-    _validate_fixed_parameters(fixed_parameters)
+    specification = fixed_parameters if isinstance(fixed_parameters, ProfileSpecification) else None
+    declared_fixed = specification.fixed_values if specification is not None else fixed_parameters
+    _validate_fixed_parameters(declared_fixed)
     lower, upper = delta_m2_bounds_eV2
     if lower <= 0.0 or upper <= lower:
         raise ValueError("delta_m2_bounds_eV2 must be positive and increasing")
-    fixed = {name: float(value) for name, value in fixed_parameters.items()}
-    free_names = [name for name in PARAMETER_NAMES if name not in fixed]
+    fixed = {name: float(value) for name, value in declared_fixed.items()}
+    if specification is None:
+        free_names = [name for name in PARAMETER_NAMES if name not in fixed]
+        declared_bounds = {
+            name: (delta_m2_bounds_eV2 if name == "delta_m2_41_eV2" else PROFILE_MIXING_BOUNDS[name])
+            for name in free_names
+        }
+    else:
+        # Revalidate against this model even if a specification was created
+        # elsewhere with a different parameter-name collection.
+        specification = ProfileSpecification.create(
+            PARAMETER_NAMES,
+            fixed_values=specification.fixed_values,
+            profiled_bounds=specification.profiled_bounds,
+        )
+        free_names = [name for name in PARAMETER_NAMES if name in specification.profiled_bounds]
+        declared_bounds = dict(specification.profiled_bounds)
 
     def unpack(vector: np.ndarray) -> ThreePlusOneParameters:
         values = dict(fixed)
@@ -140,10 +158,17 @@ def profile_three_plus_one(
         point = ThreePlusOneParameters(**fixed)
         return ProfileResult(fixed, FitPoint(point, float(objective(point))), "no free parameters")
 
-    bounds = [
-        (np.log10(lower), np.log10(upper)) if name == "delta_m2_41_eV2" else PROFILE_MIXING_BOUNDS[name]
-        for name in free_names
-    ]
+    bounds = []
+    for name in free_names:
+        bound_lower, bound_upper = declared_bounds[name]
+        if name == "delta_m2_41_eV2":
+            if bound_lower <= 0.0 or bound_upper <= bound_lower:
+                raise ValueError("profiled delta_m2_41_eV2 bounds must be positive and increasing")
+            bounds.append((np.log10(bound_lower), np.log10(bound_upper)))
+        else:
+            if bound_lower < 0.0 or bound_upper > 1.0:
+                raise ValueError(f"profiled {name} bounds must stay inside [0, 1]")
+            bounds.append((bound_lower, bound_upper))
     result = differential_evolution(
         lambda vector: objective(unpack(np.asarray(vector, dtype=float))),
         bounds=bounds,
@@ -337,6 +362,16 @@ def profile_grid(
     results: list[ProfileResult] = []
     for index, values in enumerate(product(*axis_values)):
         fixed = dict(zip(axis_names, values, strict=True))
-        results.append(profile_three_plus_one(objective, fixed, seed=seed + index))
+        profiled = {
+            name: ((1e-2, 1e2) if name == "delta_m2_41_eV2" else PROFILE_MIXING_BOUNDS[name])
+            for name in PARAMETER_NAMES
+            if name not in fixed
+        }
+        specification = ProfileSpecification.create(
+            PARAMETER_NAMES,
+            fixed_values=fixed,
+            profiled_bounds=profiled,
+        )
+        results.append(profile_three_plus_one(objective, specification, seed=seed + index))
     return results
 

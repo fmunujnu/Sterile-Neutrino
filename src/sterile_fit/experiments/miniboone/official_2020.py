@@ -170,6 +170,24 @@ def gaussian_negative_two_log_likelihood_from_signals(
     return float(residual @ np.linalg.solve(covariance, residual) + logdet)
 
 
+def chi_square_from_signals(
+    data: MiniBooNE2020Data,
+    signal_nu: NDArray[np.float64],
+    signal_nubar: NDArray[np.float64],
+) -> float:
+    """Return only the published-covariance quadratic form.
+
+    This is a deliberately separate exploratory statistic.  The validated
+    local Gaussian NLL above also contains ``log(det(V))`` because the
+    covariance changes with the signal prediction.
+    """
+    observation, prediction, covariance, _, _ = prediction_and_covariance_from_signals(
+        data, signal_nu, signal_nubar
+    )
+    residual = observation - prediction
+    return float(residual @ np.linalg.solve(covariance, residual))
+
+
 def gaussian_negative_two_log_likelihood(data: MiniBooNE2020Data,
                                          delta_m2_eV2: float,
                                          sin2_2theta: float) -> float:

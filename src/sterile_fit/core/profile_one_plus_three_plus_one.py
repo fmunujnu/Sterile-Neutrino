@@ -7,6 +7,7 @@ from typing import Callable, Mapping
 import numpy as np
 from scipy.optimize import NonlinearConstraint, differential_evolution
 from sterile_fit.core.one_plus_three_plus_one import MIXING_PARAMETER_NAMES, PARAMETER_NAMES, OnePlusThreePlusOneParameters
+from sterile_fit.core.profile_specification import ProfileSpecification
 # Constrained profile fits for the parallel 1+3+1 parameterisation.
 
 
@@ -53,7 +54,7 @@ def _validate_fixed_parameters(fixed_parameters: Mapping[str, float]) -> None:
 
 def profile_one_plus_three_plus_one(
     objective: Objective,
-    fixed_parameters: Mapping[str, float],
+    fixed_parameters: Mapping[str, float] | ProfileSpecification,
     *,
     mass_magnitude_bounds_eV2: tuple[float, float] = (1e-2, 1e2),
     seed: int = 42,
@@ -69,15 +70,34 @@ def profile_one_plus_three_plus_one(
     both row normalisations and the unitary-row embeddability inequality; an
     invalid parameter point is never passed to the physics objective.
     """
-    _validate_fixed_parameters(fixed_parameters)
+    specification = fixed_parameters if isinstance(fixed_parameters, ProfileSpecification) else None
+    declared_fixed = specification.fixed_values if specification is not None else fixed_parameters
+    _validate_fixed_parameters(declared_fixed)
     lower_mass, upper_mass = (float(value) for value in mass_magnitude_bounds_eV2)
     if lower_mass <= 0.0 or upper_mass <= lower_mass:
         raise ValueError("mass_magnitude_bounds_eV2 must be positive and increasing")
     if maxiter < 1 or popsize < 1 or tolerance <= 0.0:
         raise ValueError("optimizer controls must be strictly positive")
 
-    fixed = {name: float(value) for name, value in fixed_parameters.items()}
-    free_names = tuple(name for name in PARAMETER_NAMES if name not in fixed)
+    fixed = {name: float(value) for name, value in declared_fixed.items()}
+    if specification is None:
+        free_names = tuple(name for name in PARAMETER_NAMES if name not in fixed)
+        declared_bounds = {
+            name: (
+                mass_magnitude_bounds_eV2 if name in MASS_PARAMETER_NAMES
+                else (0.0, 1.0) if name in MIXING_PARAMETER_NAMES
+                else (-pi, pi)
+            )
+            for name in free_names
+        }
+    else:
+        specification = ProfileSpecification.create(
+            PARAMETER_NAMES,
+            fixed_values=specification.fixed_values,
+            profiled_bounds=specification.profiled_bounds,
+        )
+        free_names = tuple(name for name in PARAMETER_NAMES if name in specification.profiled_bounds)
+        declared_bounds = dict(specification.profiled_bounds)
 
     def raw_values(vector: np.ndarray) -> dict[str, float]:
         values = dict(fixed)
@@ -100,12 +120,19 @@ def profile_one_plus_three_plus_one(
 
     bounds: list[tuple[float, float]] = []
     for name in free_names:
+        bound_lower, bound_upper = declared_bounds[name]
         if name in MASS_PARAMETER_NAMES:
-            bounds.append((float(np.log10(lower_mass)), float(np.log10(upper_mass))))
+            if bound_lower <= 0.0 or bound_upper <= bound_lower:
+                raise ValueError(f"profiled {name} bounds must be positive and increasing")
+            bounds.append((float(np.log10(bound_lower)), float(np.log10(bound_upper))))
         elif name in MIXING_PARAMETER_NAMES:
-            bounds.append((0.0, 1.0))
+            if bound_lower < 0.0 or bound_upper > 1.0:
+                raise ValueError(f"profiled {name} bounds must stay inside [0, 1]")
+            bounds.append((bound_lower, bound_upper))
         else:
-            bounds.append((-pi, pi))
+            if bound_lower < -pi or bound_upper > pi:
+                raise ValueError("profiled cp_phase_mue_rad bounds must stay inside [-pi, pi]")
+            bounds.append((bound_lower, bound_upper))
 
     def feasibility(vector: np.ndarray) -> np.ndarray:
         values = raw_values(np.asarray(vector, dtype=float))
@@ -188,17 +215,54 @@ def profile_at_fixed_mass_pair(
         "tolerance": tolerance,
         "polish": polish,
     }
+    full_profile = ProfileSpecification.create(
+        PARAMETER_NAMES,
+        fixed_values=masses,
+        profiled_bounds={
+            "abs_Ue4_squared": (0.0, 1.0),
+            "abs_Umu4_squared": (0.0, 1.0),
+            "abs_Ue5_squared": (0.0, 1.0),
+            "abs_Umu5_squared": (0.0, 1.0),
+            "cp_phase_mue_rad": (-pi, pi),
+        },
+    )
+    state4_decoupled = ProfileSpecification.create(
+        PARAMETER_NAMES,
+        fixed_values={
+            **masses,
+            "abs_Ue4_squared": 0.0,
+            "abs_Umu4_squared": 0.0,
+            "cp_phase_mue_rad": 0.0,
+        },
+        profiled_bounds={
+            "abs_Ue5_squared": (0.0, 1.0),
+            "abs_Umu5_squared": (0.0, 1.0),
+        },
+    )
+    state5_decoupled = ProfileSpecification.create(
+        PARAMETER_NAMES,
+        fixed_values={
+            **masses,
+            "abs_Ue5_squared": 0.0,
+            "abs_Umu5_squared": 0.0,
+            "cp_phase_mue_rad": 0.0,
+        },
+        profiled_bounds={
+            "abs_Ue4_squared": (0.0, 1.0),
+            "abs_Umu4_squared": (0.0, 1.0),
+        },
+    )
     candidates = [
-        profile_one_plus_three_plus_one(objective, masses, seed=seed, **common),
+        profile_one_plus_three_plus_one(objective, full_profile, seed=seed, **common),
         profile_one_plus_three_plus_one(
             objective,
-            {**masses, "abs_Ue4_squared": 0.0, "abs_Umu4_squared": 0.0, "cp_phase_mue_rad": 0.0},
+            state4_decoupled,
             seed=seed + 10_000,
             **common,
         ),
         profile_one_plus_three_plus_one(
             objective,
-            {**masses, "abs_Ue5_squared": 0.0, "abs_Umu5_squared": 0.0, "cp_phase_mue_rad": 0.0},
+            state5_decoupled,
             seed=seed + 20_000,
             **common,
         ),

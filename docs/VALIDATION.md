@@ -84,7 +84,7 @@
 ```powershell
 python -B -m pytest -q -p no:cacheprovider --basetemp tmp/check_unique_name
 python -B run.py check
-python -B studies/structure_migration/check_parity.py --baseline outputs/studies/structure_migration/legacy/results/before.json --output-directory outputs/studies/structure_migration/new_check/results
+历史命令（仅作记录，冻结代码不再执行）：`frozen/studies/structure_migration/check_parity.py`。
 ```
 
 Windows环境下系统临时目录曾有权限问题，因此本轮使用独立workspace basetemp。
@@ -228,6 +228,16 @@ Windows环境下系统临时目录曾有权限问题，因此本轮使用独立w
 - 3+1接入后定向测试7 passed；全套132 passed且统一`run.py check`通过。没有把公开包无法识别的P(mumu)/P(ee) disappearance加入MiniBooNE控制样本或背景。
 - 从已重算的36100点曲面增加无热力图轮廓叠加：本地使用二维固定似然阈值2.30/4.605/9.210/11.83，官方点保持发布的coverage校准坐标；该图是方法差异诊断，不把两类线称为同一统计量。
 
+# 2026-09-13 MiniBooNE完整网格10000-Toy校准
+
+- relics1批次`mb_full_10000_half`完成全部36100个参数点，28个worker无缺片。
+- 每个被检验点生成10000份Toy；每份Toy均在相同190x190网格上重新profile。
+- 合并表含36100个唯一`tested_point_index`，每行Toy数均为10000，保存于
+  `data/experiments/miniboone/shared/derived/reprofile_toy_10000/point_calibration.csv`。
+- `python run.py miniboone`现默认读取该表，生成本地Gaussian NLL、官方likelihood、
+  官方频率学派轮廓与本地reprofile-Toy轮廓的有/无热力图对比。
+- 该结果仍是基于公开38维Gaussian模型的本地校准，不冒充合作组内部校准。
+
 # 2026-09-05 MiniBooNE 90% coverage 5000-Toy试验
 
 - 在官方90%轮廓选择6个代表点，每点5000份、共30000份38维Gaussian Toy；使用各点协方差的Cholesky因子抽样。
@@ -329,3 +339,58 @@ Windows环境下系统临时目录曾有权限问题，因此本轮使用独立w
 - 生产默认改为每个生成假设5000 Toy，即每个参数点总计10000份Toy；每份Toy的重新profile、随机种子派生和统计定义不变。
 - 原先逐Toy逐次打开CSV改为每个参数点一次批量追加，数值和抽样次序不变，避免5000 Toy任务被文件打开开销主导。
 - 本机分别对联合索引0的Fig.3a点和索引3721的Fig.3b点完成每假设2 Toy烟雾测试；两图模式、局部/全局索引和输出字段正确。正式5000-Toy全网格未运行。
+
+# 2026-09-14 MicroBooNE 5000-Toy正式结果接入
+
+- relics2正式批次`mb_fig3ab_reprofile_5000`完成：28个worker全部成功，Fig.3a为61x61、Fig.3b为74x61，共8235个唯一网格点；每点在3nu和4nu生成假设下各5000 Toy，且每份Toy重新执行固定图坐标下的profile。
+- 仅下载合并后的逐点校准摘要，没有把体积巨大的逐Toy诊断表提升为活动输入。规范表位于`data/experiments/microboone/shared/derived/reprofile_toy_5000/`。
+- 新增活动入口`python run.py scan --model 3+1 --calibration reprofile-toy`。它严格校验点数、网格、Toy数和有限值后只负责统一绘图，不重复高开销计算；Fig.3a和Fig.3b均成功生成热力图、纯排除线和CSV。
+- 活动输出位于`outputs/microboone_bnb_numi_joint/three_plus_one/primary_reprofile_toy_5000/`。该结果仍继承公开输入的NuMI探测器响应近似，不等同于合作组内部完整模拟。
+
+# 2026-09-19 NuMI基线分布默认规则
+
+- 修正研究对比中的隐式旧固定基线输入：NuMI默认预测、谱图、3+1与1+3+1联合适配均使用登记的`q(L|E,nu)`条件基线分布。
+- 固定0.680 km路径仍保留，但只能通过显式`--include-fixed-baseline-comparison`诊断选项使用，输出必须带`fixed_baseline`名称。
+- BNB加NuMI卡方对比器只接受重新生成的`fig3a/fig3b_energy_baseline.csv`，不再读取历史`fig3*_local_numi_only.csv`。
+- 已实际完成100x61的Fig.3a与Fig.3b能量—基线加权NuMI-only profile，固定基线选项未启用；输出位于`outputs/studies/numi_only_official_comparison/energy_baseline_current/`。随后仅复用保存面重绘BNB+官方NuMI与BNB+本地NuMI的固定`Delta chi2=5.99`诊断图。
+- 相对旧固定基线面，Fig.3b沿质量轴的profile分支切换由561次降至382次，`sin2_theta24`大于0.25的相邻跳变由47次降至5次；说明大量锯齿确由固定基线近似放大，但剩余高质量结构仍受离散E/L中心采样、借用BNB响应、3--5 GeV缺失和固定聚合背景限制。
+- 定向验证13项通过，`python -B run.py check`全部通过，`git diff --check`通过。
+- 已用活动联合208-bin协方差、NuMI `q(L|E,nu)`加权路径完成无Toy Gaussian CLs扫描：Fig.3a为61x61，Fig.3b为74x61且质量上限40 eV2；结果位于`outputs/microboone_bnb_numi_joint/three_plus_one/energy_baseline_gaussian_cls/`，另从相同CSV生成纯轮廓图，未重新计算统计量。
+
+# 2026-09-21 MiniBooNE appearance-only 1+3+1无Toy固定质量切片
+
+- 未改动现有MiniBooNE 3+1概率、38-bin折叠、参数相关协方差或Gaussian NLL；新增实验私有的1+3+1逐事件appearance适配器，逐条使用公开full-transmutation MC的`E_true`、`L_true`、`E_QE`和`weight/N`。
+- 以`A4=4|Ue4|^2|Umu4|^2`、`A5=4|Ue5|^2|Umu5|^2`为扫描坐标；对称最小行范数分解仅用于现有核心的幺正可嵌入检查。中微子/反中微子采用相反CP相位号，每个扫描点连续profile一个appearance CP相位。
+- 事件概率与现有1+3+1核心逐事件标量调用在12个公开事件上最大差异为0；预计算信号基底与直接重加权完整中微子/反中微子事件表的逐bin最大差异约`2e-11`事件。
+- 正式运行三个固定质量切片`(0.1,1)`、`(1,1)`、`(1,10) eV^2`；每个切片为61×61的`A4,A5 in [3e-4,1]`对数网格，共11163点。CSV坐标无重复，全部数值有限，三个切片均跨过4.605和9.210固定阈值。
+- 输出位于`outputs/miniboone_nu_nubar_combined/one_plus_three_plus_one/miniboone_1p3p1_non_toy_20260921/gaussian_nll_fixed_mass_slices/`，含总表、逐切片best fit、best-fit预测、三联及单切片热力图和纯轮廓图。
+- 这些线是各固定质量切片相对自身最小值的二维渐近阈值，不是Toy、MiniBooNE官方coverage或完整七维1+3+1全局排除。公开包未分解的电子背景及缪子控制样本没有被虚构成disappearance成分。
+- 定向`tests/test_miniboone.py`为7 passed；统一`python -B run.py check`全部通过。全套测试在仓库内独立临时目录为151 passed、2 failed；两项失败都是本轮开始前已修改的MicroBooNE NuMI/联合类与2026-09-03冻结AST不一致，本轮未改这两个文件。系统默认pytest临时目录仍有既有Windows权限锁，改用显式basetemp后不再产生19项环境错误。
+
+# 2026-09-21 MiniBooNE appearance-only 1+3+1质量profile卡方面
+
+- 正式默认入口已从固定质量切片改为外层扫描`A4,A5`、内层profile`|dm2_41|,dm2_51,phi_mue`；旧切片只保留为显式诊断模式。
+- 外层为31×31的`A4,A5 in [3e-4,1]`对数网格；两个质量差分别在`[1e-2,1e2] eV2`的21点对数网格上profile。相位先用5点粗筛全部质量对，再对最优10个质量对连续细化。
+- 第一阶段严格只用`chi2=(D-M)^T V(M)^-1(D-M)`；参数相关协方差沿用现有MiniBooNE重建，刻意不加`log(det(V))`，不运行Toy。
+- 正式表为961行、坐标无重复、全部数值有限；`delta_chi_square`范围为0到约27.44，并跨过4.605和9.210。网格最小值为`chi2=23.180828`，位于`A4=0.066943`、`A5=0.197435`、`|dm2_41|=0.251189 eV2`、`dm2_51=0.158489 eV2`、`phi=0.049964 rad`；两个质量差都不在profile范围上界。
+- 输出位于`outputs/miniboone_nu_nubar_combined/one_plus_three_plus_one/miniboone_1p3p1_profiled_chi2_20260921/chi_square_profiled_mixing_plane/`。绘图复用MiniBooNE 3+1的共享对数坐标、色表和轮廓样式，而不是另写一套风格。
+- 当前轮廓中的小岛和折线包含21点离散质量profile及31点外层网格的分辨率效应；在加密/连续质量优化之前，不能把这些细小结构解释成稳定物理特征。
+
+# 2026-09-21 MiniBooNE图示固定质量、CP守恒卡方面
+
+- 按后续澄清停止把质量profile面作为默认结果；该面及旧固定切片只保留为诊断。活动默认固定`dm2_41=-0.9 eV2`、`dm2_51=0.5 eV2`、`phi_mue=0`。
+- 扫描坐标改为参照图中的`|Ue4 Umu4|`和`|Ue5 Umu5|`，各自在`[1e-3,0.15]`取61点对数网格；概率内核使用严格映射`A_i=4|Uei Umui|^2`。
+- 在appearance-only公开likelihood中，固定乘积后单独的电子/缪子矩阵元分解完全不可识别；该方向的profile解析平坦，不引入会改变卡方的任意代表值或额外nuisance。
+- 仍只计算参数相关协方差的二次卡方项，不加入`log(det(V))`、不运行Toy。正式表共3721行、坐标无重复、全部有限，`delta_chi_square`范围为0到约448.21并跨过4.605和9.210。
+- 网格最小值为`chi2=40.320620`，位于`|Ue4 Umu4|=0.005313`、`|Ue5 Umu5|=0.042862`；对应`A4=0.000113`、`A5=0.007348`。
+- 输出位于`outputs/miniboone_nu_nubar_combined/one_plus_three_plus_one/miniboone_1p3p1_fixed_masses_cp0_20260921/chi_square_product_plane/`。热力图和纯轮廓图调用MiniBooNE共享对数画布、色表、阈值线和最优点样式。
+- 该结果只含MiniBooNE appearance公开项，不能与参照图中的全球`app.`、`disapp.`或`all`区域直接等同。
+- 定向MiniBooNE测试为11 passed，`run.py check`全部通过，`git diff --check`通过。全套为155 passed、2 failed；两项仍是本轮开始前已经存在的MicroBooNE NuMI/联合类与旧冻结AST不一致，本轮没有修改对应实现。
+
+# 2026-09-22 活动profile接口与研究脚本整理
+
+- 新增纯声明对象`ProfileSpecification`，要求每个3+1或1+3+1真实模型参数明确归入固定值或profile边界；不改变概率、目标函数、优化算法、容差或随机种子。
+- 1+3+1固定质量对活动profile已用显式声明表示完整体积、4态脱耦和5态脱耦候选；零混合边界仍单独精确评价。3+1的派生有效振幅扫描保持原专用物理约束实现。
+- 核对联合适配器：3+1与1+3+1都通过`NumiEnergyBaselineDistribution`调用登记的`q(L|E,nu)`；固定NuMI基线没有进入活动联合预测。
+- `chi_square_gui`和已完成的结构迁移工具移动到`frozen/studies/`。所有MicroBooNE/BNB/NuMI复杂分析、Toy及调试研究目录保持原位未动。
+- profile定向测试13项通过，`python -B run.py check`通过，`git diff --check`通过。完整测试使用仓库内独立临时目录后为157 passed、2 failed；两项仍是本轮开始前的冻结AST守卫没有登记NuMI条件基线类/联合类改动，不是本轮profile接口测试失败。

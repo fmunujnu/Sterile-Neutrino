@@ -23,9 +23,9 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from sterile_fit.core.calibration import GaussianHypothesis, quadratic_cls
 from sterile_fit.core.three_plus_one import ThreePlusOneParameters
-from sterile_fit.experiments.microboone.numi import build_diagnostic_numi_workflow
+from sterile_fit.experiments.microboone.numi import build_energy_baseline_numi_workflow
 
-SAVED = ROOT / "outputs/studies/numi_only_official_comparison/20260906T052358388810Z/profiled_delta_chi2"
+SAVED = ROOT / "outputs/studies/numi_only_official_comparison/energy_baseline_current"
 BNB = ROOT / "outputs/microboone_bnb/three_plus_one/bnb_only_error_analysis_20260906"
 JOINT = ROOT / "outputs/microboone_bnb_numi_joint/three_plus_one/quadratic_non_toy_20260904"
 OUT = SAVED / "saved_profile_quadratic_cls"
@@ -45,10 +45,10 @@ def numi_surface(frame: pd.DataFrame, xcol: str):
 def main() -> None:
     config = yaml.safe_load(CONFIG.read_text(encoding="utf-8"))
     null = ThreePlusOneParameters(**{k: float(v) for k, v in config["reference_parameters"].items()})
-    workflow = build_diagnostic_numi_workflow(
+    workflow = build_energy_baseline_numi_workflow(
         ROOT / config["diagnostic_four_channel_events"]["kernel_directory"],
         null,
-        float(config["baseline_km"]),
+        ROOT / config["energy_baseline_distribution"]["path"],
     )
     null_mean = workflow.predictor.predict_total_counts(null)
     null_hypothesis = GaussianHypothesis(null_mean, workflow.likelihood.covariance_for_prediction(null_mean))
@@ -70,8 +70,8 @@ def main() -> None:
         return result.p_value_3nu, result.p_value_4nu, result.cls, observed_t
 
     specs = (
-        ("fig3a", "fig3a_local_numi_only.csv", "sin2_2theta_mue"),
-        ("fig3b", "fig3b_local_numi_only.csv", "sin2_2theta_ee"),
+        ("fig3a", "fig3a_energy_baseline.csv", "sin2_2theta_mue"),
+        ("fig3b", "fig3b_energy_baseline.csv", "sin2_2theta_ee"),
     )
     outputs = {}
     OUT.mkdir(parents=True, exist_ok=True)

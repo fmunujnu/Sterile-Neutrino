@@ -115,7 +115,7 @@ $$
 |---|---|---|---|
 | MicroBooNE BNB 四通道 | 经验 kernel + 公开谱 + 协方差 | BNB-only 或联合扫描 | 是 |
 | MicroBooNE BNB+NuMI 八通道 | 经验 kernel + 公开联合协方差 | 当前 Fig. 3a/3b 主要扫描 | 是，但 NuMI 探测器响应近似明显 |
-| MiniBooNE $\nu+\bar\nu$ appearance | 公开逐事件 full-transmutation 样本 + 谱 + 协方差 | 独立 $3+1$ 二维验证 | 否；当前只实现 appearance-only $3+1$ |
+| MiniBooNE $\nu+\bar\nu$ appearance | 公开逐事件 full-transmutation 样本 + 谱 + 协方差 | 独立 $3+1$ 二维验证及固定质量切片的 $1+3+1$ appearance-only扫描 | 是；仅appearance信号，不含背景/控制样本的完整disappearance重加权 |
 | LSND DAR | 公开总转换概率 + 解析束流/截面近似 | 独立 $3+1$ 总率 likelihood | 否；接口可替换概率，但尚无正式 $1+3+1$ 扫描 |
 
 ---
@@ -836,9 +836,9 @@ $$
 - 背景和缪子控制样本按公开包的方式固定，没有把它们拆成完整 $3+1$ survival/appearance 成分；
 - 本地二维参数只描述 $P_{\mu e}$，没有同时扫描 appearance 与 disappearance。
 
-### 4.6 MiniBooNE接入 $1+3+1$ 时的差异
+### 4.6 MiniBooNE的 $1+3+1$ appearance-only扫描
 
-full-transmutation MC 含逐事件 $E_{\rm true}$ 和 $L_{\rm true}$，所以理论上可以把每个事件的
+full-transmutation MC 含逐事件 $E_{\rm true}$ 和 $L_{\rm true}$，活动代码已经把每个事件的
 
 $$
 P_{\mu e}^{3+1}(E,L)
@@ -850,9 +850,87 @@ $$
 P_{\mu e}^{1+3+1}(E,L),
 $$
 
-并保留两种频率和CP干涉。这部分比只拥有二维官方面更适合模型替换。
+并保留两种频率和CP干涉。中微子和反中微子使用相反的CP相位号。
 
-但是，公开包没有把全部电子背景、缪子控制样本和内禀中微子成分按初始味道和真能量完整分解。因此当前数据足以建立 **appearance-only $1+3+1$ 项**，但不足以自动建立和 MicroBooNE 一样同时重加权 $P_{ee}$、$P_{\mu e}$、$P_{e\mu}$、$P_{\mu\mu}$ 的完整项。当前代码尚未实现这一替换。
+公开appearance样本只能识别两个乘积振幅
+
+$$
+A_4=4|U_{e4}|^2|U_{\mu4}|^2,
+\qquad
+A_5=4|U_{e5}|^2|U_{\mu5}|^2.
+$$
+
+它不能分别确定四个矩阵元。代码使用
+
+$$
+|U_{e i}|^2=|U_{\mu i}|^2=\frac{\sqrt{A_i}}{2}
+$$
+
+作为最小行范数的对称代表，仅用于执行行归一化和幺正可嵌入检查；appearance概率本身只依赖
+$A_4$、$A_5$和相位，不把该代表解释成实验对单独矩阵元的测量。
+
+当前无Toy入口为：
+
+```powershell
+python run.py miniboone --kind one-plus-three-plus-one
+```
+
+默认采用参照图给出的固定点：
+
+$$
+\Delta m^2_{41}=-0.9\ {\rm eV}^2,
+\qquad
+\Delta m^2_{51}=0.5\ {\rm eV}^2,
+\qquad
+\phi_{\mu e}=0.
+$$
+
+扫描坐标与图一致：
+
+$$
+x=|U_{e4}U_{\mu4}|,
+\qquad
+y=|U_{e5}U_{\mu5}|,
+$$
+
+在$[10^{-3},0.15]$的61×61对数网格上计算。概率核心接收的振幅严格转换为
+
+$$
+A_4=4x^2,
+\qquad
+A_5=4y^2.
+$$
+
+appearance-only信号只依赖$x$和$y$的乘积，不能区分$|U_{ei}|$与$|U_{\mu i}|$各自的取值。
+所以在保持$x,y$固定时，对这些单独矩阵元分解进行profile是严格平坦的：所有允许分解给出
+同一个$P_{\mu e}$和同一个卡方。当前公开likelihood没有额外暴露可供profile的系统学nuisance；
+代码不虚构新的惩罚项或归一化参数。
+
+当前第一阶段按用户要求只用卡方：
+
+$$
+\chi^2(x,y)
+=
+[D-M(x,y)]^T V[M(x,y)]^{-1}[D-M(x,y)].
+$$
+
+这里$D$是38维公开观测向量，$M$是当前1+3+1信号、公开背景和控制样本组成的预测，
+$V(M)$是沿用现有MiniBooNE重建的参数相关协方差。该入口特意不加入Gaussian NLL的
+$\ln|V|$项，也不运行Toy。热力图绘制
+
+$$
+\Delta\chi^2(x,y)
+=\chi^2(x,y)-\chi^2_{\min}.
+$$
+
+90%和99%线暂分别采用两个扫描坐标的固定阈值4.605和9.210。它们是无Toy渐近近似下的
+诊断线，不是参照图中`app.`、`disapp.`或`all`全球数据组合的复现，也不是MiniBooNE合作组
+的频率学派coverage。质量profile只保留为显式`--one-plus-three-plus-one-mode profile-masses`
+诊断，不作为当前默认结果。
+
+但是，公开包没有把全部电子背景、缪子控制样本和内禀中微子成分按初始味道和真能量完整分解。因此当前实现只是 **appearance-only $1+3+1$ 项**：只替换full-transmutation信号的
+$P_{\mu e}$，背景和缪子控制预测沿用公开包的固定处理。它不足以建立和MicroBooNE一样同时重加权
+$P_{ee}$、$P_{\mu e}$、$P_{e\mu}$、$P_{\mu\mu}$ 的完整项。
 
 ### 4.7 MiniBooNE建议插图
 
@@ -861,6 +939,12 @@ $$
 ```text
 outputs/miniboone_nu_nubar_combined/two_flavour/miniboone_3plus1_reconstruction_20260905/scan/parameter_space.png
 outputs/miniboone_nu_nubar_combined/two_flavour/miniboone_3plus1_reconstruction_20260905/scan/parameter_space_line_overlay.png
+outputs/miniboone_nu_nubar_combined/one_plus_three_plus_one/miniboone_1p3p1_fixed_masses_cp0_20260921/chi_square_product_plane/fixed_mass_product_plane_heatmap.png
+outputs/miniboone_nu_nubar_combined/one_plus_three_plus_one/miniboone_1p3p1_fixed_masses_cp0_20260921/chi_square_product_plane/fixed_mass_product_plane_lines.png
+outputs/miniboone_nu_nubar_combined/one_plus_three_plus_one/miniboone_1p3p1_profiled_chi2_20260921/chi_square_profiled_mixing_plane/profiled_mixing_plane_heatmap.png
+outputs/miniboone_nu_nubar_combined/one_plus_three_plus_one/miniboone_1p3p1_profiled_chi2_20260921/chi_square_profiled_mixing_plane/profiled_mixing_plane_lines.png
+outputs/miniboone_nu_nubar_combined/one_plus_three_plus_one/miniboone_1p3p1_non_toy_20260921/gaussian_nll_fixed_mass_slices/fixed_mass_slices_heatmap.png
+outputs/miniboone_nu_nubar_combined/one_plus_three_plus_one/miniboone_1p3p1_non_toy_20260921/gaussian_nll_fixed_mass_slices/fixed_mass_slices_lines.png
 ```
 
 建议从官方论文及数据页查找电子样本谱、允许区和频率学派轮廓说明。
@@ -1154,6 +1238,7 @@ outputs/lsnd_final_2001/three_plus_one/public_rate_approximation_20260906_v2/par
 | MicroBooNE $1+3+1$ `analytic` | 固定profile点的广义二次型 $CL_s$ | 固定质量对，profile四个模平方和一个相位 | 否 | 不是官方发布分析 |
 | MicroBooNE $1+3+1$ `toy` | 固定profile点的经验Toy $CL_s$ | 观测数据profile一次 | 是；Toy内不重新profile | 不是官方发布分析 |
 | MiniBooNE `scan` | 参数相关协方差的Gaussian NLL | 无额外profile | 否 | 与官方likelihood面和官方频率学派轮廓比较 |
+| MiniBooNE `one-plus-three-plus-one` | 参数相关协方差的纯卡方项 | 固定图示质量差及CP=0，扫描$|U_{e4}U_{\mu4}|,|U_{e5}U_{\mu5}|$；单独矩阵元分解解析退化 | 否 | appearance-only固定点；4.605/9.210固定阈值，不是官方coverage |
 | MiniBooNE `official` | 直接读取官方likelihood面 | 官方面已包含其原分析选择 | 本地不生成 | 官方轮廓为发布产品 |
 | LSND `rate-scan` | 一维平均概率Gaussian NLL | 无 | 否 | 官方为DAR+DIF四变量事件likelihood的恒定切片 |
 
@@ -1259,5 +1344,5 @@ python run.py lsnd --kind rate-scan
 1. MicroBooNE 提供最完整的多通道重加权和 $CL_s$ 框架，但 detector kernel、遗漏通道、固定背景和 NuMI 输入仍有公开信息限制；
 2. MiniBooNE 提供最可靠的逐事件 $3+1$ appearance 内核验证，但尚未成为完整的 $1+3+1$ appearance+disappearance实验项；
 3. LSND 目前只提供最保守的DAR总率 likelihood，用于验证单位、平均概率和未来模型接口，不能复现官方四变量结果；
-4. 当前只有 MicroBooNE adapter 接入了 $1+3+1$ mass-pair profile；MiniBooNE和LSND尚未纳入统一数值全局项；
+4. MicroBooNE adapter接入了 $1+3+1$ mass-pair profile；MiniBooNE已有固定图示质量差、CP守恒的独立appearance-only混合乘积扫描，但MiniBooNE和LSND仍未纳入统一数值全局项；
 5. 在补足每个实验的模型可移植输入前，任何多实验 $1+3+1$ 结果都应称为“在声明近似下的条件性联合分析”，不能称为合作组级严格全球限制。

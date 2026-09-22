@@ -2,6 +2,8 @@ import pytest
 
 from sterile_fit.core.profile_one_plus_three_plus_one import profile_one_plus_three_plus_one
 from sterile_fit.core.one_plus_three_plus_one import OnePlusThreePlusOneParameters
+from sterile_fit.core.one_plus_three_plus_one import PARAMETER_NAMES
+from sterile_fit.core.profile_specification import ProfileSpecification
 
 
 def test_profile_keeps_named_true_parameters_fixed() -> None:
@@ -36,3 +38,27 @@ def test_profile_rejects_ambiguous_or_nonphysical_fixed_names() -> None:
             lambda parameters: 0.0,
             {"theta14": 0.1},
         )
+
+
+def test_explicit_extended_profile_specification_honours_fixed_and_profiled_coordinates() -> None:
+    fixed = {
+        "delta_m2_41_absolute_eV2": 1.2,
+        "delta_m2_51_eV2": 2.0,
+        "abs_Ue4_squared": 0.01,
+        "abs_Umu4_squared": 0.02,
+        "abs_Umu5_squared": 0.02,
+        "cp_phase_mue_rad": 3.0,
+    }
+    specification = ProfileSpecification.create(
+        PARAMETER_NAMES,
+        fixed_values=fixed,
+        profiled_bounds={"abs_Ue5_squared": (0.0, 0.1)},
+    )
+    result = profile_one_plus_three_plus_one(
+        lambda parameters: (parameters.abs_Ue5_squared - 0.03) ** 2,
+        specification,
+        seed=7,
+        maxiter=100,
+        popsize=8,
+    )
+    assert result.best_fit.parameters.abs_Ue5_squared == pytest.approx(0.03, abs=1e-7)

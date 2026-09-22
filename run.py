@@ -29,7 +29,7 @@ def main(argv=None):
     tasks = parser.add_subparsers(dest="task", required=True)
     scan = tasks.add_parser("scan", help="Constrained profile with analytic, toy or adaptive-toy calibration")
     scan.add_argument("--model", choices=("3+1", "1+3+1"), default="3+1")
-    scan.add_argument("--calibration", choices=("analytic", "toy", "adaptive-toy"), default="analytic")
+    scan.add_argument("--calibration", choices=("analytic", "toy", "adaptive-toy", "reprofile-toy"), default="analytic")
     scan.add_argument("--preset", choices=("fig3a", "fig3b", "mass-pair"))
     scan.add_argument("--engine-help", action="store_true", help="Show all unchanged model-specific grid/profile controls")
     spectrum = tasks.add_parser("spectrum", help="Fixed spectra; no standalone global fit")
@@ -41,8 +41,12 @@ def main(argv=None):
     inputs = tasks.add_parser("inputs", help="Visual input checks")
     inputs.add_argument("--kind", choices=("public", "numi-flux"), default="public")
     tasks.add_parser("compare", help="Render completed scan CSVs without fitting or recalibrating")
-    miniboone = tasks.add_parser("miniboone", help="MiniBooNE 2020 combined official release or local likelihood reconstruction")
-    miniboone.add_argument("--kind", choices=("official", "scan"), default="official")
+    miniboone = tasks.add_parser("miniboone", help="MiniBooNE 2020 combined official release, local likelihood, reprofile-Toy result, or appearance-only 1+3+1 slices")
+    miniboone.add_argument(
+        "--kind",
+        choices=("official", "scan", "toy", "one-plus-three-plus-one"),
+        default="toy",
+    )
     lsnd = tasks.add_parser("lsnd", help="LSND final-publication facts or 3+1 appearance-convention audit")
     lsnd.add_argument(
         "--kind", choices=("official", "core-mapping", "rate-scan"),
@@ -57,6 +61,14 @@ def main(argv=None):
     except ValueError as error:
         parser.error(str(error))
     if args.task == "scan":
+        if args.calibration == "reprofile-toy":
+            if args.model != "3+1":
+                parser.error("reprofile-toy currently has a completed result only for the 3+1 model")
+            from sterile_fit.experiments.microboone.reprofile_toy import render_completed_reprofile_toy
+            return _invoke(
+                render_completed_reprofile_toy,
+                ["--figure", args.preset or "both", *remaining],
+            )
         from sterile_fit.scan import scan_three_plus_one, scan_one_plus_three_plus_one
         if any(x == "--cls-calibration" or x.startswith("--cls-calibration=") for x in remaining):
             parser.error("Use --calibration, not a second --cls-calibration setting")

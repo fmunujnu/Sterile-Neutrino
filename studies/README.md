@@ -13,9 +13,11 @@
 | quadratic_toy_check | 独立固定二次型CF反演，对照相同Toy的固定与profiled T；不替换活动推断 |
 | cls_plus_b_comparison | 已结束的CLs+b对照，不是活动统计方法 |
 | scan_result_comparison | 指向frozen内的原轮廓脚本；日常改用 run.py compare |
-| chi_square_gui | 从根目录ksquare移入的独立交互工具 |
 | bnb_flux_provenance | 从冻结基准语法解析flux的来源工具，不执行冻结代码 |
-| structure_migration | 本次机械迁移记录和前后数值对照；迁移脚本不要重复运行 |
+
+已结束且不再运行的`chi_square_gui`和`structure_migration`保存在
+`frozen/studies/`。MicroBooNE/BNB/NuMI相关的复杂profile、Toy、粗糙度和输入诊断
+本轮均原位保留，等待单独科学审查后再决定是否归档。
 
 每个研究目录README仅解释自身用途、依赖和输出。接口变化时必须更新直接导入的函数；
 当前主架构不在这里复制，统一见 docs/ARCHITECTURE.md。

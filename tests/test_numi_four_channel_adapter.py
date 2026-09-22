@@ -1,10 +1,17 @@
 import numpy as np
+from hashlib import sha256
 from pathlib import Path
 
 from sterile_fit.core.three_plus_one import ThreePlusOneParameters, ThreePlusOneVacuumModel
+from sterile_fit.core.one_plus_three_plus_one import OnePlusThreePlusOneParameters, OnePlusThreePlusOneVacuumModel
 from sterile_fit.experiments.microboone.numi import (
-    NumiEnergyBaselineDistribution, build_diagnostic_numi_workflow,
+    NumiEnergyBaselineDistribution, NumiEnergyBaselinePredictor,
+    build_diagnostic_numi_workflow,
     build_energy_baseline_numi_workflow,
+)
+from sterile_fit.experiments.microboone.adapter import (
+    build_three_plus_one_analysis,
+    load_analysis_selection,
 )
 from sterile_fit.experiments.microboone.public_data import NUMI_FOUR_CHANNELS, numi_four_channel_published_indices
 from sterile_fit.experiments.microboone.public_data import PublishedNumiFourChannelInputs, load_numi_four_channel_inputs
@@ -96,3 +103,32 @@ def test_registered_numi_configuration_uses_energy_baseline_input() -> None:
     assert configuration["include_as_standalone_experiment"] is False
     path = ROOT / configuration["energy_baseline_distribution"]["path"]
     assert path.is_file()
+    assert sha256(path.read_bytes()).hexdigest().upper() == configuration[
+        "energy_baseline_distribution"
+    ]["sha256"]
+
+
+def test_registered_joint_builder_reaches_the_conditional_baseline_predictor() -> None:
+    selection = load_analysis_selection(
+        ROOT / "configs/analyses/microboone_bnb_numi.yaml",
+        repository_root=ROOT,
+    )
+    analysis = build_three_plus_one_analysis(selection, repository_root=ROOT)
+    experiment = analysis.experiments[0]
+    joint_workflow = experiment.predict_counts.__self__
+    assert isinstance(joint_workflow.numi.predictor, NumiEnergyBaselinePredictor)
+    assert experiment.metadata["numi_energy_baseline_distribution_sha256"] == (
+        "86767AD390920A610A44BB45A279660F3B46F51954499206B4D0F0790153CF52"
+    )
+
+
+def test_generic_model_prediction_uses_energy_baseline_distribution() -> None:
+    kernel_path = ROOT / "data/experiments/microboone/numi/reweighting"
+    psi = ROOT / "data/experiments/microboone/numi/derived/public_dk2nu_energy_baseline/psi_exposure_weighted_four_flavours.csv"
+    null_3p1 = ThreePlusOneParameters(1.2, 0.0, 0.0)
+    workflow = build_energy_baseline_numi_workflow(kernel_path, null_3p1, psi)
+    null_1p3p1 = OnePlusThreePlusOneParameters.three_neutrino_null()
+    generic = workflow.predictor.kernel.predict_total_counts_with_baseline_distribution(
+        OnePlusThreePlusOneVacuumModel(null_1p3p1), workflow.predictor.distribution
+    )
+    assert np.allclose(generic, workflow.predictor.predict_total_counts(null_3p1), rtol=1e-12, atol=1e-12)

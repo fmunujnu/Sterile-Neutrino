@@ -30,7 +30,7 @@
 ## 对当前项目的含义
 
 - 当前MicroBooNE：已有公共观测、背景、协方差、重建/锚定kernel等输入，能够研究“在声明近似下替换振荡概率”的参数空间；不等同拥有合作组内部MC。
-- MiniBooNE：已经验证本地3+1结果与公开数值likelihood面高度一致，但这只能验证公开Gaussian NLL重建；不自动给出合作组频率学派coverage，也不自动授权1+3+1多频重加权。
+- MiniBooNE：已经验证本地3+1结果与公开数值likelihood面高度一致；公开full-transmutation事件的逐事件真实$E,L$足以重加权$1+3+1$ appearance信号，但只验证公开Gaussian NLL重建，不自动给出合作组频率学派coverage，也不提供背景和控制样本的完整disappearance分解。
 - LSND：若只有3+1二维面/图，能作为3+1复现锚点，不能作为严格1+3+1实验项。要纳入严谨1+3+1全局拟合，至少需要LSND的事件级、核级或能保留\(L/E\)结构的binned likelihood输入。
 
 ## 统计层面的当前状态
@@ -95,7 +95,7 @@ P_{\alpha\to\beta}(E_t,L_t;\Theta).
 
 ## 本项目的暂定结论与下一步
 
-1. MiniBooNE当前应继续作为`three_plus_one_only`的强验证锚点，直到确认本地输入保留了足以逐真能量/基线重算多频概率的响应结构；公开190×190的3+1 likelihood面本身不够。
+1. MiniBooNE公开190×190的3+1 likelihood面本身仍不足以推广模型；但配套full-transmutation事件表确实保留了逐事件真实能量、基线、重建能量和权重，因此MiniBooNE可登记为`event_or_kernel`的appearance-only项。该标签不覆盖未分解背景、控制样本或完整disappearance处理。
 2. MicroBooNE在已有kernel可用范围内可保留为`event_or_kernel`候选，但最终标签取决于所有受振荡中微子成分是否已逐成分进入预测，以及BNB--NuMI联合项是否使用正确的交叉协方差。
 3. LSND当前不是“不能用”，而是应分成两个产物：公开3+1复现锚点，和等待可用多维/核级输入后的1+3+1正式项。不能以第一个产物替代第二个。
 4. 任何现阶段总图都应命名为“条件性联合研究”，并在图注列出进入的实验及数据级别；只有全部决定性实验达到kernel或等价likelihood层级、并完成相应统计校准，才能称为严格全球限制。

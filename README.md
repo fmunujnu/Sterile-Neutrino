@@ -48,18 +48,37 @@ figure1 是上 BNB、下 NuMI 的 nue CC FC 两面板，三个谱入口调用同
 MiniBooNE 2020 ν+反ν联合发布采用平行入口，不改变MicroBooNE：
 
 ```powershell
+# 默认主要结果：读取已完成的每点10000-Toy、每份Toy全网格reprofile校准
+python run.py miniboone
+
 # 原样绘制合作组发布的似然面和频率学派轮廓
 python run.py miniboone --kind official
 
 # 从发布的逐事件信号、背景、控制样本和协方差重算Gaussian NLL
 python run.py miniboone --kind scan
+
+# 1+3+1 appearance-only：固定图示质量差与CP=0，扫描两个混合乘积；不运行Toy
+python run.py miniboone --kind one-plus-three-plus-one
 ```
 
+默认的 `toy` 输出本地Gaussian NLL、官方likelihood、官方频率学校准轮廓和
+本地10000-Toy reprofile轮廓；机器可读校准表固定保存在
+`data/experiments/miniboone/shared/derived/reprofile_toy_10000/point_calibration.csv`。
 `official` 是官方数值的直接可视化；`scan` 使用本仓库3+1短基线核心的精确
 appearance振幅重建。对MiniBooNE公开的两味appearance模型它与原公式等价；只有通过逐面比较后
 才能称为统计复现。二者不会被混作同一结果。
 `scan` 另外输出无热力图的 `parameter_space_line_overlay.png`：实线是本地二维
 似然固定阈值，点线是合作组发布的频率学派覆盖率轮廓，仅用于诊断二者差异。
+
+`one-plus-three-plus-one`逐事件使用公开的真实能量和真实基线。默认按参照图固定
+$\Delta m^2_{41}=-0.9\,\mathrm{eV}^2$、$\Delta m^2_{51}=0.5\,\mathrm{eV}^2$、
+$\phi_{\mu e}=0$，在$|U_{e4}U_{\mu4}|$与$|U_{e5}U_{\mu5}|$的61×61对数网格上扫描。
+单独的$|U_{ei}|$和$|U_{\mu i}|$分解不被该appearance-only likelihood识别，故这些无效
+坐标的profile是解析平坦的，不会改变卡方。当前第一阶段只计算
+$\chi^2=(D-M)^T V(M)^{-1}(D-M)$，不加入$\ln|V|$，也不运行Toy。90%/99%线暂用
+二维固定阈值4.605/9.210，不是合作组coverage。质量profile和旧固定切片仅保留为显式
+诊断模式。该入口只重加权公开full-transmutation appearance事件；
+公开包未分解的背景和缪子控制样本保持原处理，因此结果不是完整appearance+disappearance限制。
 
 LSND final 2001 uses the same parallel-but-not-joint-validation layout:
 
@@ -83,7 +102,16 @@ coverage contour. See `data/experiments/lsnd/`.
 
 ## Profile：选择近似还是 Toy
 
+活动推断只有三类计算职责：逐点profile得到卡方；不生成Toy的Gaussian近似
+`CL_s`；固定逐点假设后生成伪数据的Toy `CL_s`。此外，`reprofile-toy`只是读取
+已经完成的“每份Toy重新profile”校准表并统一绘图。两个模型的通用profile核心现在
+支持`ProfileSpecification`显式列出每个真实参数的固定值或profile边界；这项接口整理
+不改变现有Fig.3a/Fig.3b约束曲线、优化器或默认边界。
+
 ```powershell
+# 当前主要的MicroBooNE逐Toy重新profile结果：读取已完成的5000 Toy/假设校准表，不重新计算
+python run.py scan --model 3+1 --calibration reprofile-toy
+
 # 原 Fig3a 联合分析坐标和范围，Gaussian分布近似
 python run.py scan --preset fig3a --calibration analytic
 
@@ -99,6 +127,12 @@ python run.py scan --preset fig3a --calibration adaptive-toy --adaptive-analytic
 # 并行开发模型；保持原 7x7 默认质量网格和 profile 设置
 python run.py scan --model 1+3+1 --preset mass-pair --calibration analytic
 ```
+
+`reprofile-toy`同时输出Fig.3a与Fig.3b的CLs热力图和纯95%排除线；也可加
+`--preset fig3a`或`--preset fig3b`只绘制一幅。其固定输入为
+`data/experiments/microboone/shared/derived/reprofile_toy_5000/point_calibration.csv`：
+每个扫描点在3ν和4ν生成假设下各5000份Toy，并对每份Toy重新执行该图坐标约束下的profile。
+此入口只重绘已校准结果，不会再次运行Toy。
 
 3+1 扫描默认在 `outputs/.scan_cache/three_plus_one/` 保存内容寻址的观测数据profile和二次型前置缓存。相同活动代码、配置、科学输入、网格和profile模式下，仅改变Toy数、种子、批大小或自适应Toy范围会直接复用此前置阶段；输出metadata明确记录是否命中。每个扫描点只profile观测数据一次，随后缓存并固定该点的3nu/4nu预测、协方差及Cholesky分解；同一批Toy使用精确的批量二次型求解，不在Toy内部重新profile。`--no-precalibration-cache` 可强制完整重算。缓存是可删除的派生产物，不是科学输入。
 
@@ -167,10 +201,10 @@ python run.py prepare --kind numi-kernel
 - 1+3+1 质量对平面允许全部混合归零，所以只是当前开发诊断，不可直接宣称整个模型被排除。
 - analytic 对观测数据逐点profile后，以固定假设下解析得到的T均值和方差作Gaussian近似；toy固定相同逐点假设并用批量矩阵求解获得经验分布；adaptive 是Gaussian预选与Toy的显式混合。广义二次型特征函数反演不再进入活动扫描。
 - 不是合作组完整 14 通道内部分析。
-- MiniBooNE 当前是独立的两味 appearance 验证入口，尚未加入跨实验联合fit；官方
-  轮廓做过频率学派覆盖率研究，本地 `scan` 目前只重建Gaussian NLL，不冒充该校准。
-  当前3+1接入只计算发布包可识别的appearance振幅；没有足够公开事件分类来对所有
-  背景和muon控制样本实施完整的3+1 disappearance重加权。
+- MiniBooNE当前是独立appearance入口，尚未加入跨实验联合fit；官方轮廓做过频率学派
+  覆盖率研究，本地`scan`和`one-plus-three-plus-one`只使用Gaussian NLL，不冒充该校准。
+  $1+3+1$逐事件重加权只作用于发布包可识别的appearance信号；没有足够公开事件分类来对
+  所有背景和muon控制样本实施完整disappearance重加权。
 - LSND final 2001 is an appearance-only public-fact and 3+1-unit-convention
   audit. The final event likelihood and numerical surface were not publicly
   released, so it is not a joint-fit input and is not a likelihood reproduction.

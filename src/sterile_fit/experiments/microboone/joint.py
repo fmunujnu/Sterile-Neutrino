@@ -155,7 +155,7 @@ import yaml
 from sterile_fit.output import SpectrumCurve, SpectrumPanel, render_microboone_spectrum_panels, write_csv, write_json
 from sterile_fit.experiments.microboone.public_data import BNB_FOUR_CHANNELS, NUMI_FOUR_CHANNELS
 from sterile_fit.experiments.microboone.bnb import build_strict_bnb_workflow
-from sterile_fit.experiments.microboone.numi import build_diagnostic_numi_workflow
+from sterile_fit.experiments.microboone.numi import build_energy_baseline_numi_workflow
 
 # Plot fixed BNB+NuMI spectra; this script performs no fit or optimisation.
 
@@ -200,10 +200,10 @@ def plot_joint_spectrum() -> None:
         my3nu_parameters,
         float(bnb_document["baseline_km"]),
     )
-    numi = build_diagnostic_numi_workflow(
+    numi = build_energy_baseline_numi_workflow(
         JOINT_PLOT_ROOT / numi_document["diagnostic_four_channel_events"]["kernel_directory"],
         my3nu_parameters,
-        float(numi_document["baseline_km"]),
+        JOINT_PLOT_ROOT / numi_document["energy_baseline_distribution"]["path"],
     )
     joint = build_joint_microboone_bnb_numi_workflow(bnb, numi)
 
@@ -368,10 +368,10 @@ def plot_figure1_spectrum() -> None:
         nominal_parameters,
         float(bnb_document["baseline_km"]),
     )
-    numi = build_diagnostic_numi_workflow(
+    numi = build_energy_baseline_numi_workflow(
         FIGURE1_ROOT / numi_document["diagnostic_four_channel_events"]["kernel_directory"],
         nominal_parameters,
-        float(numi_document["baseline_km"]),
+        FIGURE1_ROOT / numi_document["energy_baseline_distribution"]["path"],
     )
     joint = build_joint_microboone_bnb_numi_workflow(bnb, numi)
     paper_parameters = {value: figure1_paper_parameters(value) for value in FIGURE1_SIN2_THETA24_VALUES}

@@ -468,6 +468,77 @@ def plot_one_plus_three_plus_one_scan(table: pd.DataFrame, output: Path) -> None
     plt.close(figure)
 
 
+def render_profiled_cls_surface(
+    table: pd.DataFrame,
+    output_path: Path,
+    *,
+    x_label: str,
+    title: str,
+    heatmap: bool,
+) -> None:
+    """Render a completed pointwise-profiled CLs table without recalculation."""
+    masses = np.sort(table["mass"].unique())
+    amplitudes = np.sort(table["amplitude"].unique())
+    surface = (
+        table.pivot(index="mass", columns="amplitude", values="cls_corrected")
+        .reindex(index=masses, columns=amplitudes)
+        .to_numpy(dtype=float)
+    )
+    if surface.shape != (len(masses), len(amplitudes)) or not np.all(np.isfinite(surface)):
+        raise ValueError("profiled CLs surface is incomplete")
+    figure, axis = plt.subplots(figsize=(7.5, 5.8), constrained_layout=True)
+    if heatmap:
+        image = axis.pcolormesh(
+            _extended_plot_log_cell_edges(amplitudes),
+            _extended_plot_log_cell_edges(masses),
+            surface,
+            shading="flat", cmap="viridis_r", vmin=0.0, vmax=1.0,
+        )
+        figure.colorbar(image, ax=axis, label=r"$CL_s$")
+    if float(np.min(surface)) <= 0.05 <= float(np.max(surface)):
+        axis.contour(amplitudes, masses, surface, levels=[0.05], colors="tab:red", linewidths=2.0)
+        axis.legend(handles=[Line2D([0], [0], color="tab:red", linewidth=2.0,
+                                    label=r"95% $CL_s$ exclusion boundary")])
+    axis.set_xscale("log")
+    axis.set_yscale("log")
+    axis.set_xlim(amplitudes.min(), amplitudes.max())
+    axis.set_ylim(masses.min(), masses.max())
+    axis.set_xlabel(x_label)
+    axis.set_ylabel(r"$\Delta m^2_{41}\;[\mathrm{eV}^2]$")
+    axis.set_title(title)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    figure.savefig(output_path, dpi=180, bbox_inches="tight")
+    plt.close(figure)
+
+
+def _miniboone_log_surface_axes(
+    x_values: np.ndarray,
+    y_values: np.ndarray,
+    surface: np.ndarray,
+    *,
+    heatmap: bool,
+    vmax: float | None = None,
+):
+    """Shared MiniBooNE log-grid canvas used by 3+1 and 1+3+1 outputs."""
+    figure, axis = plt.subplots(figsize=(7.5, 5.8), constrained_layout=True)
+    colour = None
+    if heatmap:
+        colour = axis.pcolormesh(
+            _extended_plot_log_cell_edges(x_values),
+            _extended_plot_log_cell_edges(y_values),
+            surface,
+            shading="flat",
+            cmap="viridis_r",
+            vmax=vmax,
+        )
+    axis.set_xscale("log")
+    axis.set_yscale("log")
+    axis.set_xlim(x_values.min(), x_values.max())
+    axis.set_ylim(y_values.min(), y_values.max())
+    axis.grid(False)
+    return figure, axis, colour
+
+
 def render_miniboone_parameter_space(
     result_table: pd.DataFrame,
     official_contours: dict[str, np.ndarray],
@@ -482,13 +553,8 @@ def render_miniboone_parameter_space(
     masses = surface.index.to_numpy(dtype=float)
     delta = surface.to_numpy(dtype=float)
     delta -= np.nanmin(delta)
-    figure, axis = plt.subplots(figsize=(7.5, 5.8), constrained_layout=True)
-    colour = axis.pcolormesh(
-        _extended_plot_log_cell_edges(amplitudes),
-        _extended_plot_log_cell_edges(masses),
-        delta,
-        shading="flat",
-        cmap="viridis_r",
+    figure, axis, colour = _miniboone_log_surface_axes(
+        amplitudes, masses, delta, heatmap=True
     )
     styles = {
         "1sigma": ("white", "--", r"Official $1\sigma$"),
@@ -508,15 +574,238 @@ def render_miniboone_parameter_space(
     best = result_table.loc[result_table[value_column].idxmin()]
     axis.scatter(best["sintheta"], best["dm2"], marker="*", s=90, color="black", zorder=5)
     handles.append(Line2D([0], [0], marker="*", color="black", linestyle="none", label="Grid minimum"))
-    axis.set_xscale("log")
-    axis.set_yscale("log")
-    axis.set_xlim(amplitudes.min(), amplitudes.max())
-    axis.set_ylim(masses.min(), masses.max())
     axis.set_xlabel(r"$\sin^2(2\theta_{\mu e})$")
     axis.set_ylabel(r"$\Delta m^2\;[\mathrm{eV}^2]$")
     axis.set_title("MiniBooNE released likelihood" if official_surface else "MiniBooNE locally reconstructed Gaussian likelihood")
     figure.colorbar(colour, ax=axis, label=(r"$\Delta[-2\ln L]$" if official_surface else r"$\Delta(\chi^2+\ln|M|)$"))
     axis.legend(handles=handles, fontsize=8, loc="best")
+    figure.savefig(output_path, dpi=180, bbox_inches="tight")
+    plt.close(figure)
+
+
+def _render_miniboone_two_coordinate_chi2(
+    result_table: pd.DataFrame,
+    output_path: Path,
+    *,
+    heatmap: bool,
+    x_column: str,
+    y_column: str,
+    x_label: str,
+    y_label: str,
+    title: str,
+    minimum_label: str,
+) -> None:
+    """Shared MiniBooNE two-coordinate chi-square plot and contour style."""
+    pivot = result_table.pivot(
+        index=y_column,
+        columns=x_column,
+        values="delta_chi_square",
+    )
+    x_values = pivot.columns.to_numpy(dtype=float)
+    y_values = pivot.index.to_numpy(dtype=float)
+    surface = pivot.to_numpy(dtype=float)
+    if not np.all(np.isfinite(surface)):
+        raise ValueError("MiniBooNE 1+3+1 chi-square surface is incomplete")
+    figure, axis, colour = _miniboone_log_surface_axes(
+        x_values,
+        y_values,
+        surface,
+        heatmap=heatmap,
+        vmax=12.0,
+    )
+    levels = ((4.605, "tab:red", "90% fixed-threshold boundary"),
+              (9.210, "tab:orange", "99% fixed-threshold boundary"))
+    handles = []
+    for level, color, label in levels:
+        if float(np.min(surface)) <= level <= float(np.max(surface)):
+            axis.contour(
+                x_values,
+                y_values,
+                surface,
+                levels=[level],
+                colors=[color],
+                linewidths=2.0,
+            )
+        handles.append(Line2D([0], [0], color=color, linewidth=2.0, label=label))
+    best = result_table.loc[result_table["chi_square"].idxmin()]
+    axis.scatter(
+        best[x_column],
+        best[y_column],
+        marker="*",
+        s=90,
+        color="black",
+        zorder=5,
+    )
+    handles.append(Line2D([0], [0], marker="*", color="black", linestyle="none",
+                          label=minimum_label))
+    axis.set_xlabel(x_label)
+    axis.set_ylabel(y_label)
+    axis.set_title(title)
+    if colour is not None:
+        figure.colorbar(colour, ax=axis, label=r"$\Delta\chi^2$")
+    axis.legend(handles=handles, fontsize=8, loc="best")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    figure.savefig(output_path, dpi=180, bbox_inches="tight")
+    plt.close(figure)
+
+
+def render_miniboone_profiled_mixing_plane(
+    result_table: pd.DataFrame,
+    output_path: Path,
+    *,
+    heatmap: bool,
+) -> None:
+    """Use the established MiniBooNE style for the mass-profiled A4-A5 plane."""
+    _render_miniboone_two_coordinate_chi2(
+        result_table,
+        output_path,
+        heatmap=heatmap,
+        x_column="appearance_amplitude_state4",
+        y_column="appearance_amplitude_state5",
+        x_label=r"$A_4=4|U_{e4}|^2|U_{\mu4}|^2$",
+        y_label=r"$A_5=4|U_{e5}|^2|U_{\mu5}|^2$",
+        title=r"MiniBooNE appearance-only $1+3+1$: mass- and CP-profiled $\chi^2$",
+        minimum_label="Profiled grid minimum",
+    )
+
+
+def render_miniboone_fixed_mass_product_plane(
+    result_table: pd.DataFrame,
+    output_path: Path,
+    *,
+    heatmap: bool,
+    delta_m2_41_absolute_eV2: float = 0.9,
+    delta_m2_51_eV2: float = 0.5,
+    cp_phase_mue_rad: float = 0.0,
+) -> None:
+    """Render the paper-coordinate fixed-mass, CP-conserving product plane."""
+    _render_miniboone_two_coordinate_chi2(
+        result_table,
+        output_path,
+        heatmap=heatmap,
+        x_column="absolute_Ue4_Umu4",
+        y_column="absolute_Ue5_Umu5",
+        x_label=r"$|U_{e4}U_{\mu4}|$",
+        y_label=r"$|U_{e5}U_{\mu5}|$",
+        title=(r"MiniBooNE appearance-only $1+3+1$: "
+               + fr"$\Delta m^2_{{41}}=-{delta_m2_41_absolute_eV2:g}$, "
+               + fr"$\Delta m^2_{{51}}={delta_m2_51_eV2:g}\;\mathrm{{eV}}^2$, "
+               + fr"$\phi_{{\mu e}}={cp_phase_mue_rad:g}$"),
+        minimum_label="Grid minimum",
+    )
+
+
+def render_miniboone_one_plus_three_plus_one_slices(
+    result_table: pd.DataFrame,
+    output_path: Path,
+    *,
+    heatmap: bool,
+) -> None:
+    """Render fixed-mass A4-A5 slices of the appearance-only 1+3+1 NLL."""
+    mass_columns = ("delta_m2_41_absolute_eV2", "delta_m2_51_eV2")
+    value_column = "delta_negative_2_log_likelihood_within_mass_slice"
+    required = {
+        *mass_columns,
+        "appearance_amplitude_state4",
+        "appearance_amplitude_state5",
+        value_column,
+    }
+    missing = required.difference(result_table.columns)
+    if missing:
+        raise ValueError(f"MiniBooNE 1+3+1 result is missing columns: {sorted(missing)}")
+    mass_pairs = list(
+        result_table.loc[:, mass_columns].drop_duplicates().itertuples(index=False, name=None)
+    )
+    if not mass_pairs:
+        raise ValueError("MiniBooNE 1+3+1 result contains no mass slices")
+    figure, axes = plt.subplots(
+        1,
+        len(mass_pairs),
+        figsize=(6.0 * len(mass_pairs), 5.4),
+        constrained_layout=True,
+        squeeze=False,
+        sharex=True,
+        sharey=True,
+    )
+    colour = None
+    contour_handles: list[Line2D] = []
+    levels = ((4.605, "tab:red", "90% fixed-threshold boundary"),
+              (9.210, "tab:orange", "99% fixed-threshold boundary"))
+    for axis, (q41, q51) in zip(axes[0], mass_pairs):
+        selected = result_table[
+            np.isclose(result_table[mass_columns[0]], q41)
+            & np.isclose(result_table[mass_columns[1]], q51)
+        ]
+        pivot = selected.pivot(
+            index="appearance_amplitude_state5",
+            columns="appearance_amplitude_state4",
+            values=value_column,
+        )
+        amplitude4 = pivot.columns.to_numpy(dtype=float)
+        amplitude5 = pivot.index.to_numpy(dtype=float)
+        surface = pivot.to_numpy(dtype=float)
+        if not np.all(np.isfinite(surface)):
+            raise ValueError("MiniBooNE 1+3+1 NLL surface is incomplete")
+        if heatmap:
+            colour = axis.pcolormesh(
+                _extended_plot_log_cell_edges(amplitude4),
+                _extended_plot_log_cell_edges(amplitude5),
+                surface,
+                shading="flat",
+                cmap="viridis_r",
+                vmin=0.0,
+                vmax=12.0,
+            )
+        for level, color, label in levels:
+            if float(np.min(surface)) <= level <= float(np.max(surface)):
+                axis.contour(
+                    amplitude4,
+                    amplitude5,
+                    surface,
+                    levels=[level],
+                    colors=[color],
+                    linewidths=2.0,
+                )
+        axis.scatter(
+            selected.loc[selected[value_column].idxmin(), "appearance_amplitude_state4"],
+            selected.loc[selected[value_column].idxmin(), "appearance_amplitude_state5"],
+            marker="*",
+            color="black",
+            s=75,
+            zorder=5,
+        )
+        axis.set_xscale("log")
+        axis.set_yscale("log")
+        axis.set_xlim(amplitude4.min(), amplitude4.max())
+        axis.set_ylim(amplitude5.min(), amplitude5.max())
+        axis.set_xlabel(r"$A_4=4|U_{e4}|^2|U_{\mu4}|^2$")
+        axis.set_title(
+            rf"$|\Delta m^2_{{41}}|={q41:g}$, "
+            rf"$\Delta m^2_{{51}}={q51:g}\ \mathrm{{eV}}^2$"
+        )
+        axis.grid(False)
+    axes[0, 0].set_ylabel(r"$A_5=4|U_{e5}|^2|U_{\mu5}|^2$")
+    contour_handles = [
+        Line2D([0], [0], color=color, linewidth=2.0, label=label)
+        for _, color, label in levels
+    ]
+    contour_handles.append(
+        Line2D([0], [0], marker="*", color="black", linestyle="none",
+               label="Minimum in each fixed-mass slice")
+    )
+    figure.legend(handles=contour_handles, loc="outside lower center", ncol=3, fontsize=8)
+    figure.suptitle(
+        r"MiniBooNE appearance-only $1+3+1$: CP-profiled Gaussian NLL",
+        y=1.01,
+    )
+    if colour is not None:
+        figure.colorbar(
+            colour,
+            ax=axes.ravel().tolist(),
+            label=r"$\Delta(\chi^2+\ln|V|)$ within fixed-mass slice",
+            shrink=0.88,
+        )
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     figure.savefig(output_path, dpi=180, bbox_inches="tight")
     plt.close(figure)
 
@@ -776,10 +1065,11 @@ def render_miniboone_three_way_comparison(
                    label=f"Official frequentist contour — {label}"),
         ))
         if toy_result is not None:
+            toy_count = int(toy_result["toys"].iloc[0])
             handles.append(Line2D(
                 [0], [0], color=method_colours["local_toy"],
                 linestyle=linestyle, linewidth=1.2,
-                label=f"Local 100-Toy reprofile — {label}",
+                label=f"Local {toy_count}-Toy reprofile — {label}",
             ))
 
     axis.set_xscale("log")

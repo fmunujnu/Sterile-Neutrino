@@ -5,6 +5,8 @@ include_as_standalone_experiment: false
 baseline_km: 0.680
 energy_baseline_distribution:
   path: "data/experiments/microboone/numi/derived/public_dk2nu_energy_baseline/psi_exposure_weighted_four_flavours.csv"
+  sha256: "86767AD390920A610A44BB45A279660F3B46F51954499206B4D0F0790153CF52"
+  method: "public_dk2nu_conditional_v1: normalize every flavour-energy row to q(L|E,nu); do not multiply the energy-marginal flux already absorbed by the event kernel"
   role: "active NuMI conditional-baseline input in the registered BNB+NuMI analysis"
   scientific_status: "Public dk2nu RHC conditional L|E distributions; FHC uses the documented charge-conjugate proxy. The energy marginal is not multiplied again because the empirical event kernel already contains flux."
 reference_parameters:

@@ -1,10 +1,12 @@
 # NuMI-only official-grid comparison
 
-This isolated study compares two versions of the repository's approximate
-NuMI-only detector adapter with the collaboration's released NuMI-only observed
-delta-chi-square grid: the original fixed 0.680 km baseline and an explicit
-public-dk2nu-informed energy--baseline average.  All three curves use a fixed
+This isolated study compares the repository's public-dk2nu-informed
+energy--baseline averaged NuMI approximation with the collaboration's released
+NuMI-only observed delta-chi-square grid.  Both curves use a fixed
 `delta chi-square = 5.99` diagnostic criterion; neither CLs nor Toy MC is used.
+The historical fixed 0.680 km result is included only when the explicit
+`--include-fixed-baseline-comparison` option is supplied and is written with
+`fixed_baseline` in its filename.
 
 The local calculation reuses the active 3+1 prediction, likelihood and profile
 functions.  It does not alter or enable the production analysis registry.  Its

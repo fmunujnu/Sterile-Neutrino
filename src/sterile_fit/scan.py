@@ -388,6 +388,16 @@ def scan_three_plus_one() -> None:
     parser.add_argument("--sin2-2theta-ee-grid", type=_csv_values, help="explicit comma-separated override")
     parser.add_argument("--sin2-theta14-grid", type=_csv_values, default=[0.001, 0.01, 0.05])
     parser.add_argument("--grid-points", type=int, default=61, help="points per logarithmic axis when no explicit grid is given")
+    parser.add_argument(
+        "--delta-m2-grid-points",
+        type=int,
+        help="mass-axis points; defaults to --grid-points",
+    )
+    parser.add_argument(
+        "--amplitude-grid-points",
+        type=int,
+        help="appearance/disappearance-axis points; defaults to --grid-points",
+    )
     parser.add_argument("--delta-m2-min-eV2", type=float, default=1e-2)
     parser.add_argument("--delta-m2-max-eV2", type=float, default=1e2)
     parser.add_argument("--sin2-2theta-mue-min", type=float, default=1e-5)
@@ -469,8 +479,10 @@ def scan_three_plus_one() -> None:
         bnb_overrides=bnb_overrides,
     )
     objective = analysis.objective.chi2
-    if arguments.grid_points < 8:
-        raise ValueError("--grid-points must be at least 8 for a resolved two-dimensional scan")
+    delta_m2_grid_points = arguments.delta_m2_grid_points or arguments.grid_points
+    amplitude_grid_points = arguments.amplitude_grid_points or arguments.grid_points
+    if delta_m2_grid_points < 8 or amplitude_grid_points < 8:
+        raise ValueError("each generated scan axis must contain at least 8 points")
     toy_enabled = arguments.cls_calibration in {"toy", "adaptive-toy"}
     if toy_enabled and arguments.number_of_toys < 2:
         raise ValueError("--number-of-toys must be at least 2 per hypothesis")
@@ -497,17 +509,17 @@ def scan_three_plus_one() -> None:
     delta_m2_grid = arguments.delta_m2_grid_eV2 or np.geomspace(
         arguments.delta_m2_min_eV2,
         arguments.delta_m2_max_eV2,
-        arguments.grid_points,
+        delta_m2_grid_points,
     ).tolist()
     appearance_grid = arguments.sin2_2theta_mue_grid or np.geomspace(
         arguments.sin2_2theta_mue_min,
         arguments.sin2_2theta_mue_max,
-        arguments.grid_points,
+        amplitude_grid_points,
     ).tolist()
     electron_disappearance_grid = arguments.sin2_2theta_ee_grid or np.geomspace(
         arguments.sin2_2theta_ee_min,
         arguments.sin2_2theta_ee_max,
-        arguments.grid_points,
+        amplitude_grid_points,
     ).tolist()
     if any(value <= 0.0 for value in delta_m2_grid):
         raise ValueError("delta-m2 grid values must be positive")

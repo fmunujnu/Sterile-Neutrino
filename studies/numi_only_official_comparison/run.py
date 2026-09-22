@@ -54,26 +54,28 @@ def _surface(table: pd.DataFrame, x_name: str, value_name: str):
     return pivot.columns.to_numpy(float), pivot.index.to_numpy(float), pivot.to_numpy(float)
 
 
-def _draw_panel(axis, fixed, distributed, official, x_name: str, x_label: str, *, heatmap: bool):
-    lx, ly, lz = _surface(fixed, x_name, "local_profile_delta_chi2")
+def _draw_panel(axis, distributed, official, x_name: str, x_label: str, *, heatmap: bool, fixed=None):
     dx, dy, dz = _surface(distributed, x_name, "local_profile_delta_chi2")
     ox, oy, oz = _surface(official, x_name, "official_profile_delta_chi2")
     if heatmap:
-        colour = axis.pcolormesh(lx, ly, lz, shading="auto", cmap="viridis", vmin=0.0, vmax=25.0)
+        colour = axis.pcolormesh(dx, dy, dz, shading="auto", cmap="viridis", vmin=0.0, vmax=25.0)
     else:
         colour = None
-    axis.contour(lx, ly, lz, levels=[THRESHOLD_95], colors=["tab:blue"], linewidths=2.2)
     axis.contour(dx, dy, dz, levels=[THRESHOLD_95], colors=["tab:green"], linewidths=2.2, linestyles="-.")
     axis.contour(ox, oy, oz, levels=[THRESHOLD_95], colors=["tab:orange"], linewidths=2.2, linestyles="--")
     axis.set_xscale("log")
     axis.set_yscale("log")
     axis.set_xlabel(x_label)
     axis.set_ylabel(r"$\Delta m^2_{41}\;[\mathrm{eV}^2]$")
-    axis.legend(handles=[
-        Line2D([0], [0], color="tab:blue", lw=2.2, label="Local NuMI-only approximation"),
+    handles = [
         Line2D([0], [0], color="tab:green", lw=2.2, ls="-.", label=r"Local public-dk2nu $E$--$L$ average"),
         Line2D([0], [0], color="tab:orange", lw=2.2, ls="--", label="Official NuMI-only grid"),
-    ], fontsize=8)
+    ]
+    if fixed is not None:
+        fx, fy, fz = _surface(fixed, x_name, "local_profile_delta_chi2")
+        axis.contour(fx, fy, fz, levels=[THRESHOLD_95], colors=["tab:blue"], linewidths=1.6)
+        handles.append(Line2D([0], [0], color="tab:blue", lw=1.6, label="Explicit fixed-baseline diagnostic"))
+    axis.legend(handles=handles, fontsize=8)
     return colour
 
 
@@ -81,6 +83,10 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--workers", type=int, default=8)
     parser.add_argument("--output-directory", type=Path)
+    parser.add_argument(
+        "--include-fixed-baseline-comparison", action="store_true",
+        help="explicitly add the non-default fixed-L diagnostic",
+    )
     args = parser.parse_args()
     if args.workers < 1:
         raise ValueError("workers must be positive")
@@ -89,11 +95,6 @@ def main() -> None:
     reference = ThreePlusOneParameters(**{
         key: float(value) for key, value in config["reference_parameters"].items()
     })
-    fixed_workflow = build_diagnostic_numi_workflow(
-        ROOT / config["diagnostic_four_channel_events"]["kernel_directory"],
-        reference,
-        float(config["baseline_km"]),
-    )
     distributed_workflow = build_energy_baseline_numi_workflow(
         ROOT / config["diagnostic_four_channel_events"]["kernel_directory"],
         reference,
@@ -136,28 +137,37 @@ def main() -> None:
         local_b["local_profile_delta_chi2"] = local_b["local_profile_chi2"] - minimum
         return local_a, local_b, minimum
 
-    fixed_a, fixed_b, fixed_minimum = scan(fixed_workflow, "Fixed-L")
     distributed_a, distributed_b, distributed_minimum = scan(distributed_workflow, "E-L")
+    fixed_a = fixed_b = None
+    fixed_minimum = None
+    if args.include_fixed_baseline_comparison:
+        fixed_workflow = build_diagnostic_numi_workflow(
+            ROOT / config["diagnostic_four_channel_events"]["kernel_directory"],
+            reference,
+            float(config["baseline_km"]),
+        )
+        fixed_a, fixed_b, fixed_minimum = scan(fixed_workflow, "Explicit fixed-L diagnostic")
 
     output = args.output_directory or result_directory(
         "studies", "numi_only_official_comparison", "profiled_delta_chi2"
     )
     output.mkdir(parents=True, exist_ok=False)
-    fixed_a.to_csv(output / "fig3a_fixed_baseline.csv", index=False, float_format="%.17g")
-    fixed_b.to_csv(output / "fig3b_fixed_baseline.csv", index=False, float_format="%.17g")
     distributed_a.to_csv(output / "fig3a_energy_baseline.csv", index=False, float_format="%.17g")
     distributed_b.to_csv(output / "fig3b_energy_baseline.csv", index=False, float_format="%.17g")
+    if fixed_a is not None and fixed_b is not None:
+        fixed_a.to_csv(output / "fig3a_fixed_baseline.csv", index=False, float_format="%.17g")
+        fixed_b.to_csv(output / "fig3b_fixed_baseline.csv", index=False, float_format="%.17g")
 
     for heatmap, filename in ((True, "comparison_heatmap.png"), (False, "comparison_lines.png")):
         figure, axes = plt.subplots(1, 2, figsize=(13.5, 5.4))
         colour = _draw_panel(
-            axes[0], fixed_a, distributed_a, official_a, "sin2_2theta_mue", r"$\sin^2(2\theta_{\mu e})$", heatmap=heatmap
+            axes[0], distributed_a, official_a, "sin2_2theta_mue", r"$\sin^2(2\theta_{\mu e})$", heatmap=heatmap, fixed=fixed_a
         )
         axes[0].set_xlim(1e-4, 1.0)
         axes[0].set_ylim(1e-2, 1e2)
         axes[0].set_title("(a) Appearance profile")
         _draw_panel(
-            axes[1], fixed_b, distributed_b, official_b, "sin2_2theta_ee", r"$\sin^2(2\theta_{ee})$", heatmap=heatmap
+            axes[1], distributed_b, official_b, "sin2_2theta_ee", r"$\sin^2(2\theta_{ee})$", heatmap=heatmap, fixed=fixed_b
         )
         axes[1].set_xlim(1e-2, 1.0)
         axes[1].set_ylim(1e-1, 14.0)
@@ -177,6 +187,7 @@ def main() -> None:
         "cls_used": False,
         "toy_mc_used": False,
         "local_delta_reference": "minimum sampled across both complete local profile tables",
+        "fixed_baseline_included_only_by_explicit_option": args.include_fixed_baseline_comparison,
         "fixed_baseline_minimum_chi2": fixed_minimum,
         "energy_baseline_minimum_chi2": distributed_minimum,
         "energy_baseline_input": str(ENERGY_BASELINE_INPUT),

@@ -13,3 +13,5 @@ arguments:
   - "1e-1"
   - "--delta-m2-max-eV2"
   - "40"
+  - "--delta-m2-grid-points"
+  - "74"

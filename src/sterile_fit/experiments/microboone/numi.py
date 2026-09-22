@@ -258,6 +258,32 @@ class NumiFourChannelEmpiricalKernel:
             raise FloatingPointError("NuMI event prediction contains invalid counts")
         return prediction
 
+    def predict_total_counts_with_baseline_distribution(
+        self,
+        model: VacuumOscillationModel,
+        distribution: NumiEnergyBaselineDistribution,
+    ) -> NDArray[np.float64]:
+        """Predict with q(L|E,flavour); fixed-L use is reserved for explicit diagnostics."""
+        energy = self.true_energy_GeV
+        channels = (
+            ("beam_nue_to_nue_cc_response_counts", 0, 0, False),
+            ("beam_numu_to_nue_cc_response_counts", 1, 0, False),
+            ("beam_nue_to_numu_cc_response_counts", 0, 1, False),
+            ("beam_numu_to_numu_cc_response_counts", 1, 1, False),
+            ("beam_nuebar_to_nuebar_cc_response_counts", 0, 0, True),
+            ("beam_numubar_to_nuebar_cc_response_counts", 1, 0, True),
+            ("beam_nuebar_to_numubar_cc_response_counts", 0, 1, True),
+            ("beam_numubar_to_numubar_cc_response_counts", 1, 1, True),
+        )
+        prediction = self.fixed_published_background_counts.copy()
+        for field, initial, final, antineutrino in channels:
+            prediction += np.asarray(getattr(self, field)) @ distribution.average_probability(
+                model, initial, final, energy, antineutrino=antineutrino
+            )
+        if not np.all(np.isfinite(prediction)) or np.any(prediction < 0.0):
+            raise FloatingPointError("NuMI E-L averaged event prediction contains invalid counts")
+        return prediction
+
 
 # Parameter-dependent prediction for the diagnostic NuMI four-channel adapter.
 

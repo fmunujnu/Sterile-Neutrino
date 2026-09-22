@@ -2,6 +2,7 @@ import pytest
 
 from sterile_fit.core.profile_three_plus_one import profile_appearance_amplitude_grid, profile_electron_disappearance_grid, profile_s14_s24_at_fixed_sin2_2theta_ee, profile_s14_s24_at_fixed_sin2_2theta_mue, profile_grid, profile_three_plus_one
 from sterile_fit.core.three_plus_one import ThreePlusOneParameters
+from sterile_fit.core.profile_specification import ProfileSpecification
 
 
 def _objective(parameters: ThreePlusOneParameters) -> float:
@@ -22,6 +23,23 @@ def test_profile_minimizes_only_non_fixed_parameters() -> None:
     assert result.best_fit.parameters.sin2_theta14 == 0.04
     assert result.best_fit.parameters.sin2_theta24 == pytest.approx(0.02, abs=1e-5)
     assert result.best_fit.chi2 < 1e-10
+
+
+def test_explicit_profile_specification_declares_every_coordinate() -> None:
+    specification = ProfileSpecification.create(
+        ("delta_m2_41_eV2", "sin2_theta14", "sin2_theta24"),
+        fixed_values={"delta_m2_41_eV2": 1.2, "sin2_theta14": 0.04},
+        profiled_bounds={"sin2_theta24": (0.0, 1.0)},
+    )
+    result = profile_three_plus_one(_objective, specification, seed=1)
+    assert result.best_fit.parameters.sin2_theta24 == pytest.approx(0.02, abs=1e-5)
+
+    with pytest.raises(ValueError, match="missing"):
+        ProfileSpecification.create(
+            ("delta_m2_41_eV2", "sin2_theta14", "sin2_theta24"),
+            fixed_values={"delta_m2_41_eV2": 1.2},
+            profiled_bounds={"sin2_theta24": (0.0, 1.0)},
+        )
 
 
 def test_profile_grid_keeps_each_scan_coordinate_fixed() -> None:
